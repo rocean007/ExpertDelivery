@@ -279,50 +279,51 @@ async function fetchOrsSuggestions(
     .filter((v): v is GeocodeResult => v !== null);
 }
 
-async function fetchGoogleSuggestions(
+async function fetchPhotonSuggestions(
   query: string,
-  limit: number,
-  countryCodes?: string
+  limit: number
 ): Promise<GeocodeResult[]> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return [];
-
+  const safeLimit = Math.max(1, Math.min(10, Math.floor(limit)));
   const params = new URLSearchParams({
-    address: query,
-    key: apiKey,
+    q: query,
+    limit: String(safeLimit),
+    lang: 'en',
   });
 
-  const firstCountry = countryCodes?.split(',')[0]?.trim().toLowerCase();
-  if (firstCountry) {
-    params.set('components', `country:${firstCountry}`);
-    params.set('region', firstCountry);
-  }
-
-  const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`);
+  const response = await fetch(`https://photon.komoot.io/api/?${params.toString()}`);
   if (!response.ok) {
-    throw new Error(`Google geocode returned ${response.status}`);
+    throw new Error(`Photon geocode returned ${response.status}`);
   }
 
   const data = (await response.json()) as {
-    status?: string;
-    results?: Array<{
-      formatted_address?: string;
-      geometry?: { location?: { lat?: number; lng?: number } };
+    features?: Array<{
+      geometry?: { coordinates?: [number, number] };
+      properties?: {
+        name?: string;
+        street?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+      };
     }>;
   };
 
-  if (data.status !== 'OK' || !Array.isArray(data.results)) return [];
+  const features = Array.isArray(data.features) ? data.features : [];
 
-  return data.results
-    .slice(0, Math.max(1, Math.min(10, Math.floor(limit))))
+  return features
     .map((result) => {
-      const lat = result.geometry?.location?.lat;
-      const lng = result.geometry?.location?.lng;
+      const coords = result.geometry?.coordinates;
+      if (!coords || coords.length < 2) return null;
+      const [lng, lat] = coords;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+      const p = result.properties;
+      const parts = [p?.name, p?.street, p?.city, p?.state, p?.country].filter(Boolean);
+
       return {
         lat,
         lng,
-        displayName: result.formatted_address || `${lat},${lng}`,
+        displayName: parts.length > 0 ? parts.join(', ') : `${lat},${lng}`,
       } as GeocodeResult;
     })
     .filter((v): v is GeocodeResult => v !== null);
@@ -421,9 +422,9 @@ export async function geocodeSuggestions(
       );
     }
 
-    // Optional higher-accuracy fallback when GOOGLE_MAPS_API_KEY is available.
+    // Free no-key fallback.
     if (results.length === 0) {
-      results = await fetchGoogleSuggestions(normalized, safeLimit, cc);
+      results = await fetchPhotonSuggestions(normalized, safeLimit);
     }
 
     // Last fallback: OpenRouteService geocoder when configured.
