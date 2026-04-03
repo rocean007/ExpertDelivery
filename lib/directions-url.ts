@@ -1,9 +1,23 @@
 import type { LatLng } from '@/types';
 
+export interface GoogleMapsTarget {
+  position: LatLng;
+  query?: string;
+}
+
 const COORD_PRECISION = 6;
 
 function fmt(c: LatLng): string {
   return `${c.lat.toFixed(COORD_PRECISION)},${c.lng.toFixed(COORD_PRECISION)}`;
+}
+
+function queryText(value?: string): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function toGoogleMapsValue(target: GoogleMapsTarget): string {
+  return queryText(target.query) ?? fmt(target.position);
 }
 
 /**
@@ -12,13 +26,13 @@ function fmt(c: LatLng): string {
  * @see https://developers.google.com/maps/documentation/urls/get-started
  */
 export function buildGoogleMapsDirectionsUrl(
-  depot: LatLng,
-  orderedStops: LatLng[]
+  depot: GoogleMapsTarget,
+  orderedStops: GoogleMapsTarget[]
 ): string | null {
   if (orderedStops.length === 0) return null;
 
-  const origin = fmt(depot);
-  const destination = fmt(orderedStops[orderedStops.length - 1]);
+  const origin = toGoogleMapsValue(depot);
+  const destination = toGoogleMapsValue(orderedStops[orderedStops.length - 1]);
 
   if (orderedStops.length === 1) {
     const p = new URLSearchParams({
@@ -30,7 +44,7 @@ export function buildGoogleMapsDirectionsUrl(
     return `https://www.google.com/maps/dir/?${p.toString()}`;
   }
 
-  const middle = orderedStops.slice(0, -1).map(fmt);
+  const middle = orderedStops.slice(0, -1).map(toGoogleMapsValue);
   const p = new URLSearchParams({
     api: '1',
     origin,
@@ -44,10 +58,10 @@ export function buildGoogleMapsDirectionsUrl(
 /**
  * Opens a single coordinate in Google Maps (no API key).
  */
-export function buildGoogleMapsLocationUrl(position: LatLng): string {
+export function buildGoogleMapsLocationUrl(target: GoogleMapsTarget): string {
   const p = new URLSearchParams({
     api: '1',
-    query: fmt(position),
+    query: toGoogleMapsValue(target),
   });
 
   return `https://www.google.com/maps/search/?${p.toString()}`;

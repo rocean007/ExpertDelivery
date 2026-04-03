@@ -413,14 +413,14 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   const googleMapsUrl = currentStop && driverPosition
     ? buildGoogleMapsUrl(
         driverPosition,
-        currentStop.position,
-        remainingStops.slice(1).map((s) => s.position)
+        { position: currentStop.position, query: currentStop.address },
+        remainingStops.slice(1).map((s) => ({ position: s.position, query: s.address }))
       )
     : currentStop
     ? buildGoogleMapsUrl(
         run.depot.position,
-        currentStop.position,
-        remainingStops.slice(1).map((s) => s.position)
+        { position: currentStop.position, query: currentStop.address },
+        remainingStops.slice(1).map((s) => ({ position: s.position, query: s.address }))
       )
     : '#';
 

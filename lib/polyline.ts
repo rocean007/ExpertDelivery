@@ -1,5 +1,10 @@
 import type { LatLng } from '@/types';
 
+interface GoogleMapsWaypoint {
+  position: LatLng;
+  query?: string;
+}
+
 /**
  * Decode an encoded polyline string into an array of LatLng coordinates.
  * Uses the Google/OSRM encoded polyline format (precision 5).
@@ -81,18 +86,23 @@ function encodeNumber(num: number): string {
 
 export function buildGoogleMapsUrl(
   origin: LatLng,
-  destination: LatLng,
-  waypoints: LatLng[] = []
+  destination: GoogleMapsWaypoint,
+  waypoints: GoogleMapsWaypoint[] = []
 ): string {
   const params = new URLSearchParams({
     api: '1',
     origin: `${origin.lat},${origin.lng}`,
-    destination: `${destination.lat},${destination.lng}`,
+    destination: destination.query?.trim() || `${destination.position.lat},${destination.position.lng}`,
     travelmode: 'driving',
   });
 
   if (waypoints.length > 0) {
-    params.set('waypoints', waypoints.map((w) => `${w.lat},${w.lng}`).join('|'));
+    params.set(
+      'waypoints',
+      waypoints
+        .map((w) => w.query?.trim() || `${w.position.lat},${w.position.lng}`)
+        .join('|')
+    );
   }
 
   return `https://www.google.com/maps/dir/?${params.toString()}`;

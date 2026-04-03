@@ -211,7 +211,8 @@ export default function PlannerPage() {
         stops: validStops.map((s) => ({
           id: s.id,
           label: s.label || s.address,
-          ...(s.position ? { lat: s.position.lat, lng: s.position.lng } : { address: s.address }),
+          address: s.address,
+          ...(s.position ? { lat: s.position.lat, lng: s.position.lng } : {}),
         })),
         driverName: driverName || undefined,
         vehicleType,

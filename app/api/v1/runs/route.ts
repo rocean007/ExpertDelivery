@@ -59,9 +59,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
   const depot: Stop = {
     id: 'depot',
     label: body.depot.label,
-    address: depotAddressResolved ?? body.depot.address,
+    address: body.depot.address ?? depotAddressResolved,
     position: depotPosition,
-    googleMapsUrl: buildGoogleMapsLocationUrl(depotPosition),
+    googleMapsUrl: buildGoogleMapsLocationUrl({
+      position: depotPosition,
+      query: body.depot.address ?? depotAddressResolved,
+    }),
     status: 'pending',
   };
 
@@ -88,9 +91,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
     resolvedStops.push({
       id: s.id,
       label: s.label,
-      address: stopAddressResolved ?? s.address,
+      address: s.address ?? stopAddressResolved,
       position,
-      googleMapsUrl: buildGoogleMapsLocationUrl(position),
+      googleMapsUrl: buildGoogleMapsLocationUrl({
+        position,
+        query: s.address ?? stopAddressResolved,
+      }),
       orderId: s.orderId,
       notes: s.notes,
       status: 'pending',
@@ -176,7 +182,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
     legDurations.reduce((a, b) => a + b, 0) + orderedStops.length * HANDOFF_MINUTES;
 
   const directionsUrl =
-    buildGoogleMapsDirectionsUrl(depot.position, orderedStops.map((s) => s.position)) ?? undefined;
+    buildGoogleMapsDirectionsUrl(
+      { position: depot.position, query: depot.address },
+      orderedStops.map((s) => ({ position: s.position, query: s.address }))
+    ) ?? undefined;
 
   const run: RunRecord = {
     runId,
