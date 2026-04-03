@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { buildRunAnalysisPrompt } from '@/lib/run-analysis-prompt';
 import { withBasePath } from '@/lib/base-path';
-import { FREE_AI_CHAT_LINKS } from '@/lib/free-ai-chat-links';
 import type { RunRecord } from '@/types';
 
 interface Props {
@@ -118,6 +117,13 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
     }
   }, [promptText]);
 
+  const openAndRun = useCallback(() => {
+    setOpen(true);
+    if (!isRunning && !aiResult) {
+      void runAi();
+    }
+  }, [isRunning, aiResult, runAi]);
+
   const modal = open ? (
     <div
       className="fixed inset-0 z-[5000] flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -145,8 +151,7 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
               Route AI analysis
             </h2>
             <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              Tap Start AI to send this run prompt to multiple no-key model APIs, then receive one concise merged answer.
-              You can still copy the prompt or open chat sites manually if needed.
+              This runs directly in-app: it sends your route prompt to multiple no-key model APIs and returns one concise merged answer.
             </p>
           </div>
           <button
@@ -190,13 +195,8 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
             ) : null}
           </div>
 
-          <button
-            type="button"
-            onClick={() => void runAi()}
-            className="btn-primary w-full py-2.5 text-sm"
-            disabled={isRunning}
-          >
-            {isRunning ? 'Running multi-model AI...' : 'Start AI (auto multi-model)'}
+          <button type="button" onClick={() => void runAi()} className="btn-primary w-full py-2.5 text-sm" disabled={isRunning}>
+            {isRunning ? 'Running multi-model AI...' : 'Run again'}
           </button>
 
           <textarea
@@ -214,34 +214,6 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
           <button type="button" onClick={() => void copy()} className="btn-primary w-full py-2.5 text-sm">
             {copied ? '✓ Copied to clipboard' : 'Copy prompt'}
           </button>
-
-          <div>
-            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
-              Open a chat (alphabetical — no endorsement)
-            </p>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {FREE_AI_CHAT_LINKS.map((link) => (
-                <li key={link.href}>
-                  <a
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block rounded-lg px-3 py-2 text-xs border no-underline transition-colors hover:opacity-95"
-                    style={{
-                      background: 'var(--bg-card)',
-                      borderColor: 'var(--border-subtle)',
-                      color: 'var(--accent-green)',
-                    }}
-                  >
-                    <span className="font-medium block truncate">{link.label}</span>
-                    <span className="text-[10px] block mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
-                      {link.note}
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
       </div>
     </div>
@@ -251,7 +223,7 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openAndRun}
         className={
           compact
             ? 'px-2 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider border transition-colors'
@@ -269,7 +241,7 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {compact ? '🤖 AI' : '🤖 Route AI (auto, no API key)'}
+        {compact ? '🤖 AI' : '🤖 Start Route AI'}
       </button>
       {mounted ? createPortal(modal, document.body) : null}
     </>
