@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import type { RunRecord, LatLng } from '@/types';
+import type { RunRecord, LatLng, GeocodeResult, GeocodeLookupResult } from '@/types';
 
 const PlannerMap = dynamic(() => import('@/components/PlannerMap'), {
   ssr: false,
@@ -26,6 +26,7 @@ interface StopInput {
   address: string;
   geocoding: boolean;
   position: LatLng | null;
+  suggestions: GeocodeResult[];
   error: string;
 }
 
@@ -45,9 +46,12 @@ export default function PlannerPage() {
   const [depotAddress, setDepotAddress] = useState('');
   const [depotPosition, setDepotPosition] = useState<LatLng | null>(null);
   const [depotGeocoding, setDepotGeocoding] = useState(false);
+  const [depotSuggestions, setDepotSuggestions] = useState<GeocodeResult[]>([]);
+  const [depotHasFocus, setDepotHasFocus] = useState(false);
   const [stops, setStops] = useState<StopInput[]>([
-    { id: generateId(), label: '', address: '', geocoding: false, position: null, error: '' },
+    { id: generateId(), label: '', address: '', geocoding: false, position: null, suggestions: [], error: '' },
   ]);
+  const [activeAddressStopId, setActiveAddressStopId] = useState<string | null>(null);
   const [driverName, setDriverName] = useState('');
   const [vehicleType, setVehicleType] = useState<'bike' | 'car' | 'van'>('bike');
   const [optimizing, setOptimizing] = useState(false);
@@ -56,15 +60,19 @@ export default function PlannerPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const geocodeDebounced = useRef(
-    debounce(async (query: string, onResult: (pos: LatLng | null) => void, onLoading: (v: boolean) => void) => {
-      if (query.trim().length < 4) { onResult(null); return; }
+    debounce(async (query: string, onResult: (suggestions: GeocodeResult[], bestMatch: LatLng | null) => void, onLoading: (v: boolean) => void) => {
+      if (query.trim().length < 3) { onResult([], null); return; }
       onLoading(true);
       try {
-        const res = await fetch(`/api/v1/geocode?q=${encodeURIComponent(query)}`);
-        const json = await res.json() as { success: boolean; data: LatLng | null };
-        onResult(json.success ? json.data : null);
+        const res = await fetch(`/api/v1/geocode?q=${encodeURIComponent(query)}&limit=5`);
+        const json = await res.json() as { success: boolean; data?: GeocodeLookupResult };
+        if (json.success && json.data) {
+          onResult(json.data.suggestions, json.data.bestMatch);
+          return;
+        }
+        onResult([], null);
       } catch {
-        onResult(null);
+        onResult([], null);
       } finally {
         onLoading(false);
       }
@@ -75,9 +83,19 @@ export default function PlannerPage() {
     setDepotAddress(val);
     geocodeDebounced.current(
       val,
-      (pos) => setDepotPosition(pos),
+      (suggestions, bestMatch) => {
+        setDepotSuggestions(suggestions);
+        setDepotPosition(bestMatch);
+      },
       (v) => setDepotGeocoding(v)
     );
+  }, []);
+
+  const selectDepotSuggestion = useCallback((suggestion: GeocodeResult) => {
+    setDepotAddress(suggestion.displayName || `${suggestion.lat.toFixed(6)}, ${suggestion.lng.toFixed(6)}`);
+    setDepotPosition({ lat: suggestion.lat, lng: suggestion.lng });
+    setDepotSuggestions([]);
+    setDepotHasFocus(false);
   }, []);
 
   const handleStopChange = useCallback((id: string, field: 'label' | 'address', val: string) => {
@@ -86,9 +104,24 @@ export default function PlannerPage() {
         if (s.id !== id) return s;
         const updated = { ...s, [field]: val };
         if (field === 'address') {
+          updated.error = '';
+          if (val.trim().length < 3) {
+            updated.position = null;
+            updated.suggestions = [];
+            return updated;
+          }
           geocodeDebounced.current(
             val,
-            (pos) => setStops((p) => p.map((x) => x.id === id ? { ...x, position: pos, error: pos ? '' : 'Address not found' } : x)),
+            (suggestions, bestMatch) => setStops((p) => p.map((x) => {
+              if (x.id !== id) return x;
+              const hasInput = val.trim().length >= 4;
+              return {
+                ...x,
+                position: bestMatch,
+                suggestions,
+                error: suggestions.length === 0 && hasInput ? 'Address not found' : '',
+              };
+            })),
             (v) => setStops((p) => p.map((x) => x.id === id ? { ...x, geocoding: v } : x))
           );
         }
@@ -97,9 +130,23 @@ export default function PlannerPage() {
     );
   }, []);
 
+  const selectStopSuggestion = useCallback((id: string, suggestion: GeocodeResult) => {
+    setStops((prev) => prev.map((s) => {
+      if (s.id !== id) return s;
+      return {
+        ...s,
+        address: suggestion.displayName || `${suggestion.lat.toFixed(6)}, ${suggestion.lng.toFixed(6)}`,
+        position: { lat: suggestion.lat, lng: suggestion.lng },
+        suggestions: [],
+        error: '',
+      };
+    }));
+    setActiveAddressStopId(null);
+  }, []);
+
   const addStop = useCallback(() => {
     if (stops.length >= 20) return;
-    setStops((prev) => [...prev, { id: generateId(), label: '', address: '', geocoding: false, position: null, error: '' }]);
+    setStops((prev) => [...prev, { id: generateId(), label: '', address: '', geocoding: false, position: null, suggestions: [], error: '' }]);
   }, [stops.length]);
 
   const removeStop = useCallback((id: string) => {
@@ -184,6 +231,8 @@ export default function PlannerPage() {
                 placeholder="Main Warehouse, Kathmandu..."
                 value={depotAddress}
                 onChange={(e) => handleDepotChange(e.target.value)}
+                onFocus={() => setDepotHasFocus(true)}
+                onBlur={() => setDepotHasFocus(false)}
                 aria-label="Depot address"
               />
               {depotGeocoding && (
@@ -195,6 +244,24 @@ export default function PlannerPage() {
               )}
               {depotPosition && !depotGeocoding && (
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--accent-green)' }}>✓</span>
+              )}
+              {depotHasFocus && depotSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-44 overflow-y-auto rounded-md" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+                  {depotSuggestions.map((suggestion, idx) => (
+                    <button
+                      key={`${suggestion.lat}-${suggestion.lng}-${idx}`}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        selectDepotSuggestion(suggestion);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs transition-colors"
+                      style={{ color: 'var(--text-primary)', borderBottom: idx === depotSuggestions.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}
+                    >
+                      {suggestion.displayName}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </section>
@@ -236,6 +303,8 @@ export default function PlannerPage() {
                       placeholder="Delivery address..."
                       value={stop.address}
                       onChange={(e) => handleStopChange(stop.id, 'address', e.target.value)}
+                      onFocus={() => setActiveAddressStopId(stop.id)}
+                      onBlur={() => setActiveAddressStopId(null)}
                       aria-label={`Stop ${idx + 1} address`}
                     />
                     {stop.geocoding && (
@@ -247,6 +316,24 @@ export default function PlannerPage() {
                     )}
                     {stop.position && !stop.geocoding && (
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--accent-green)' }}>✓</span>
+                    )}
+                    {activeAddressStopId === stop.id && stop.suggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-44 overflow-y-auto rounded-md" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+                        {stop.suggestions.map((suggestion, suggestionIdx) => (
+                          <button
+                            key={`${suggestion.lat}-${suggestion.lng}-${suggestionIdx}`}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              selectStopSuggestion(stop.id, suggestion);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs transition-colors"
+                            style={{ color: 'var(--text-primary)', borderBottom: suggestionIdx === stop.suggestions.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}
+                          >
+                            {suggestion.displayName}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                   {stop.error && <p className="text-xs" style={{ color: 'var(--accent-red)' }}>{stop.error}</p>}
