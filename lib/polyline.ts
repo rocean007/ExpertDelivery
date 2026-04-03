@@ -84,11 +84,16 @@ export function buildGoogleMapsUrl(
   destination: LatLng,
   waypoints: LatLng[] = []
 ): string {
-  const base = 'https://www.google.com/maps/dir/';
-  const parts: string[] = [
-    `${origin.lat},${origin.lng}`,
-    ...waypoints.map((w) => `${w.lat},${w.lng}`),
-    `${destination.lat},${destination.lng}`,
-  ];
-  return base + parts.join('/');
+  const params = new URLSearchParams({
+    api: '1',
+    origin: `${origin.lat},${origin.lng}`,
+    destination: `${destination.lat},${destination.lng}`,
+    travelmode: 'driving',
+  });
+
+  if (waypoints.length > 0) {
+    params.set('waypoints', waypoints.map((w) => `${w.lat},${w.lng}`).join('|'));
+  }
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 }

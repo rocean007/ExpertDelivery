@@ -186,6 +186,55 @@ async function fetchOrsSuggestions(
     .filter((v): v is GeocodeResult => v !== null);
 }
 
+async function fetchGoogleSuggestions(
+  query: string,
+  limit: number,
+  countryCodes?: string
+): Promise<GeocodeResult[]> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return [];
+
+  const params = new URLSearchParams({
+    address: query,
+    key: apiKey,
+  });
+
+  const firstCountry = countryCodes?.split(',')[0]?.trim().toLowerCase();
+  if (firstCountry) {
+    params.set('components', `country:${firstCountry}`);
+    params.set('region', firstCountry);
+  }
+
+  const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Google geocode returned ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    status?: string;
+    results?: Array<{
+      formatted_address?: string;
+      geometry?: { location?: { lat?: number; lng?: number } };
+    }>;
+  };
+
+  if (data.status !== 'OK' || !Array.isArray(data.results)) return [];
+
+  return data.results
+    .slice(0, Math.max(1, Math.min(10, Math.floor(limit))))
+    .map((result) => {
+      const lat = result.geometry?.location?.lat;
+      const lng = result.geometry?.location?.lng;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return {
+        lat,
+        lng,
+        displayName: result.formatted_address || `${lat},${lng}`,
+      } as GeocodeResult;
+    })
+    .filter((v): v is GeocodeResult => v !== null);
+}
+
 async function fetchReverseNominatim(
   lat: number,
   lng: number
@@ -269,6 +318,11 @@ export async function geocodeSuggestions(
       results = await enqueueRequest(() =>
         fetchNominatimSuggestions(normalized, safeLimit)
       );
+    }
+
+    // Optional higher-accuracy fallback when GOOGLE_MAPS_API_KEY is available.
+    if (results.length === 0) {
+      results = await fetchGoogleSuggestions(normalized, safeLimit, cc);
     }
 
     // Last fallback: OpenRouteService geocoder when configured.

@@ -55,6 +55,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
+  const [mapExpanded, setMapExpanded] = useState(false);
   const [livePath, setLivePath] = useState<LatLng[]>([]);
   const [recordLivePath, setRecordLivePath] = useState(false);
   const [followGPS, setFollowGPS] = useState(false);
@@ -422,6 +423,230 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       )
     : '#';
 
+  if (!mapExpanded) {
+    return (
+      <div className="min-h-[100dvh]" style={{ background: 'var(--bg-primary)' }}>
+        <div className="max-w-6xl mx-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
+          {(!isOnline || loadedFromSnapshot || pendingSync > 0) && (
+            <div
+              className="rounded-xl px-3 py-2 text-xs font-mono leading-snug"
+              style={{
+                background: 'rgba(251,191,36,0.12)',
+                border: '1px solid rgba(251,191,36,0.35)',
+                color: '#fbbf24',
+              }}
+              role="status"
+            >
+              {!isOnline && (
+                <span>
+                  Offline mode — GPS still works. Route and map tiles use data cached from your last visit.
+                </span>
+              )}
+              {isOnline && loadedFromSnapshot && (
+                <span>Showing saved copy while reconnecting — pull to refresh or wait for sync. </span>
+              )}
+              {pendingSync > 0 && (
+                <span>
+                  {pendingSync} stop update{pendingSync === 1 ? '' : 's'} pending sync to server.
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-xl px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+            <div className="font-mono text-[10px] sm:text-xs uppercase tracking-widest" style={{ color: 'var(--accent-green)' }}>
+              {run.driverName || 'Driver'}
+            </div>
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: 'var(--accent-green)' }} />
+            </div>
+            <div className="text-[10px] sm:text-xs font-mono shrink-0" style={{ color: 'var(--text-secondary)' }}>
+              {completedCount}/{run.stops.length}
+            </div>
+          </div>
+
+          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border-default)', background: 'var(--bg-card)' }}>
+            <div className="flex items-center justify-between p-2 sm:p-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+              <p className="text-xs font-mono uppercase tracking-widest" style={{ color: 'var(--text-secondary)' }}>
+                Live Map
+              </p>
+              <button
+                type="button"
+                onClick={() => setMapExpanded(true)}
+                className="px-3 py-1.5 rounded-lg text-[10px] sm:text-xs font-mono font-bold uppercase tracking-wider"
+                style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid var(--border-default)', color: 'var(--accent-green)' }}
+              >
+                Maximize map
+              </button>
+            </div>
+            <div className="relative h-[34vh] sm:h-[42vh]">
+              <DriverMap
+                run={run}
+                driverPosition={driverPosition}
+                currentStopIndex={currentStopIndex}
+                livePath={livePath}
+                followDriver={followGPS}
+              />
+            </div>
+            <div className="p-2 sm:p-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setRecordLivePath((v) => !v)}
+                className="rounded-lg px-2.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wide border transition-colors"
+                style={{
+                  background: recordLivePath ? 'rgba(56,189,248,0.2)' : 'rgba(10,15,13,0.92)',
+                  borderColor: recordLivePath ? 'rgba(56,189,248,0.5)' : 'var(--border-default)',
+                  color: recordLivePath ? '#38bdf8' : 'var(--text-secondary)',
+                }}
+              >
+                {recordLivePath ? '● GPS' : '○ GPS'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFollowGPS((v) => !v)}
+                disabled={!driverPosition}
+                className="rounded-lg px-2.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wide border transition-colors disabled:opacity-40"
+                style={{
+                  background: followGPS ? 'rgba(74,222,128,0.15)' : 'rgba(10,15,13,0.92)',
+                  borderColor: 'var(--border-default)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                Follow
+              </button>
+              <button
+                type="button"
+                onClick={() => clearGpsTrail()}
+                className="rounded-lg px-2.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wide border"
+                style={{ background: 'rgba(10,15,13,0.92)', borderColor: 'var(--border-default)', color: 'var(--text-muted)' }}
+              >
+                Clear trail
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-3 sm:gap-4">
+            <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+              <div className="p-3 border-b text-xs font-mono uppercase tracking-widest" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>
+                Route Stops
+              </div>
+              <div className="p-2 space-y-1 max-h-[40vh] overflow-y-auto">
+                {run.stops.map((stop, idx) => (
+                  <div
+                    key={stop.id}
+                    className={`rounded-lg p-2 transition-all cursor-pointer ${idx === currentStopIndex ? 'ring-1' : ''}`}
+                    style={{
+                      background: idx === currentStopIndex ? 'rgba(74,222,128,0.1)' : 'var(--bg-elevated)',
+                      border: idx === currentStopIndex ? '1px solid var(--accent-green)' : '1px solid transparent',
+                    }}
+                    onClick={() => setCurrentStopIndex(idx)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && setCurrentStopIndex(idx)}
+                    aria-label={`Stop ${idx + 1}: ${stop.label}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold w-5 text-center" style={{ color: STATUS_COLORS[stop.status] }}>{idx + 1}</span>
+                      <span className="flex-1 text-xs font-medium truncate" style={{ color: stop.status === 'delivered' ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: stop.status === 'delivered' ? 'line-through' : 'none' }}>
+                        {stop.label}
+                      </span>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-mono" style={{ background: `${STATUS_COLORS[stop.status]}20`, color: STATUS_COLORS[stop.status] }}>
+                        {STATUS_LABELS[stop.status]}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {currentStop && run.status !== 'completed' ? (
+              <div className="rounded-xl p-3 sm:p-4 space-y-3" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)' }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
+                      Stop {currentStopIndex + 1} of {run.stops.length}
+                      {currentStop.orderId && ` · Order ${currentStop.orderId}`}
+                    </div>
+                    <h3 className="font-bold text-base truncate" style={{ color: 'var(--text-primary)' }}>{currentStop.label}</h3>
+                    {currentStop.address && (
+                      <p className="text-sm truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>{currentStop.address}</p>
+                    )}
+                    {currentStop.eta && (
+                      <p className="text-xs mt-1 font-mono" style={{ color: 'var(--accent-amber)' }}>
+                        ETA: {new Date(currentStop.eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {driverPosition && ` · ${Math.round(calculateDistance(driverPosition.lat, driverPosition.lng, currentStop.position.lat, currentStop.position.lng))}m away`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
+                    <a
+                      href={googleMapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 no-underline"
+                      style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid var(--border-default)', color: 'var(--accent-green)' }}
+                    >
+                      🗺 Next
+                    </a>
+                    {run.directionsUrl && (
+                      <a
+                        href={run.directionsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider no-underline"
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                      >
+                        Full route
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  {currentStop.status === 'pending' && (
+                    <button
+                      onClick={() => updateStop(currentStop.id, 'arrived')}
+                      disabled={updatingStop === currentStop.id}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-mono font-bold uppercase tracking-wider transition-all"
+                      style={{ background: 'rgba(163,230,53,0.15)', border: '1px solid rgba(163,230,53,0.4)', color: '#a3e635' }}
+                    >
+                      {updatingStop === currentStop.id ? '...' : '📍 Arrived'}
+                    </button>
+                  )}
+                  {(currentStop.status === 'pending' || currentStop.status === 'arrived') && (
+                    <button
+                      onClick={() => updateStop(currentStop.id, 'delivered')}
+                      disabled={updatingStop === currentStop.id}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-mono font-bold uppercase tracking-wider transition-all"
+                      style={{ background: 'rgba(74,222,128,0.2)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
+                    >
+                      {updatingStop === currentStop.id ? '...' : '✓ Delivered'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => updateStop(currentStop.id, 'skipped')}
+                    disabled={updatingStop === currentStop.id}
+                    className="px-4 py-2.5 rounded-xl text-sm font-mono font-bold uppercase tracking-wider"
+                    style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', color: 'var(--accent-red)' }}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl p-5 sm:p-6 text-center" style={{ background: 'var(--bg-card)', border: '1px solid var(--accent-green)' }}>
+                <p className="text-3xl mb-2">🎉</p>
+                <h3 className="font-mono font-bold text-lg" style={{ color: 'var(--accent-green)' }}>All Deliveries Complete!</h3>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{run.stops.length} stops · {run.totalDistanceKm} km · {run.totalDurationMin} min</p>
+                <a href="/planner" className="btn-secondary mt-4 inline-block">← New Run</a>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full min-h-[100dvh] h-[100dvh] overflow-hidden">
       {/* Map - full screen */}
@@ -475,6 +700,19 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5 items-center justify-end flex-1 min-w-0 sm:flex-none sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setMapExpanded(false)}
+              className="rounded-lg px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wide border transition-colors touch-manipulation"
+              style={{
+                background: 'rgba(10,15,13,0.92)',
+                borderColor: 'var(--border-default)',
+                color: 'var(--text-secondary)',
+              }}
+              title="Switch to dashboard view"
+            >
+              Dashboard
+            </button>
             <button
               type="button"
               onClick={() => setRecordLivePath((v) => !v)}
