@@ -70,6 +70,8 @@ export default function PlannerPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const depotBlurTimerRef = useRef<number | null>(null);
   const stopBlurTimerRef = useRef<number | null>(null);
+  const depotLatestQueryRef = useRef('');
+  const stopLatestQueryRef = useRef<Record<string, string>>({});
 
   const geocodeDebounced = useRef(
     debounce(async (query: string, onResult: (suggestions: GeocodeResult[], bestMatch: LatLng | null) => void, onLoading: (v: boolean) => void) => {
@@ -93,9 +95,11 @@ export default function PlannerPage() {
 
   const handleDepotChange = useCallback((val: string) => {
     setDepotAddress(val);
+    depotLatestQueryRef.current = val;
     geocodeDebounced.current(
       val,
       (suggestions, bestMatch) => {
+        if (depotLatestQueryRef.current !== val) return;
         setDepotSuggestions(suggestions);
         setDepotPosition(bestMatch);
       },
@@ -121,6 +125,7 @@ export default function PlannerPage() {
         const updated = { ...s, [field]: val };
         if (field === 'address') {
           updated.error = '';
+          stopLatestQueryRef.current[id] = val;
           if (val.trim().length < 2) {
             updated.position = null;
             updated.suggestions = [];
@@ -128,16 +133,19 @@ export default function PlannerPage() {
           }
           geocodeDebounced.current(
             val,
-            (suggestions, bestMatch) => setStops((p) => p.map((x) => {
-              if (x.id !== id) return x;
-              const hasInput = val.trim().length >= 2;
-              return {
-                ...x,
-                position: bestMatch,
-                suggestions,
-                error: suggestions.length === 0 && hasInput ? 'Address not found' : '',
-              };
-            })),
+            (suggestions, bestMatch) => {
+              if (stopLatestQueryRef.current[id] !== val) return;
+              setStops((p) => p.map((x) => {
+                if (x.id !== id) return x;
+                const hasInput = val.trim().length >= 2;
+                return {
+                  ...x,
+                  position: bestMatch,
+                  suggestions,
+                  error: suggestions.length === 0 && hasInput ? 'Address not found' : '',
+                };
+              }));
+            },
             (v) => setStops((p) => p.map((x) => x.id === id ? { ...x, geocoding: v } : x))
           );
         }

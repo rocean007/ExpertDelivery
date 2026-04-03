@@ -52,6 +52,95 @@ function normalizeQuery(query: string): string {
   return query.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[,]+/g, ',');
 }
 
+function normalizeText(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenize(value: string): string[] {
+  return normalizeText(value)
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 1);
+}
+
+function firstAddressSegment(value: string): string {
+  const i = value.indexOf(',');
+  return i >= 0 ? value.slice(0, i).trim() : value.trim();
+}
+
+function dedupeByNameAndApproxPosition(results: GeocodeResult[]): GeocodeResult[] {
+  const seen = new Set<string>();
+  const deduped: GeocodeResult[] = [];
+
+  for (const item of results) {
+    const name = normalizeText(item.displayName || '');
+    const key = `${name}:${item.lat.toFixed(5)}:${item.lng.toFixed(5)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+
+  return deduped;
+}
+
+function rankGeocodeResults(query: string, results: GeocodeResult[], countryCodes?: string): GeocodeResult[] {
+  const q = normalizeText(query);
+  const qTokens = tokenize(query);
+  const firstToken = qTokens[0] || '';
+  const countryHints = (countryCodes || '')
+    .split(',')
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+
+  const scored = results.map((item) => {
+    const name = item.displayName || '';
+    const n = normalizeText(name);
+    const nTokens = tokenize(name);
+
+    let score = 0;
+
+    // Keep provider relevance as a baseline.
+    score += (item.importance ?? 0) * 6;
+
+    // Strong signal for exact and prefix matches.
+    if (n === q) score += 12;
+    if (n.startsWith(q)) score += 7;
+    if (q.length >= 5 && n.includes(q)) score += 3;
+
+    // Reward how many query tokens are represented.
+    const tokenMatches = qTokens.filter((t) => nTokens.some((nt) => nt === t || nt.startsWith(t))).length;
+    const coverage = qTokens.length > 0 ? tokenMatches / qTokens.length : 0;
+    score += coverage * 8;
+
+    // Query's first token usually carries the place identity.
+    if (firstToken && nTokens.some((t) => t === firstToken || t.startsWith(firstToken))) {
+      score += 2.5;
+    }
+
+    // Mild country bias when caller requests one.
+    if (countryHints.length > 0) {
+      const hasCountryHint = countryHints.some((c) => n.includes(c));
+      if (hasCountryHint) score += 1.2;
+    }
+
+    // Penalize very long noisy labels for short queries.
+    if (q.length <= 8 && n.length > 90) {
+      score -= 1.4;
+    }
+
+    return { item, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((s) => s.item);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -99,7 +188,8 @@ async function fetchNominatimSuggestions(
 ): Promise<GeocodeResult[]> {
   const encoded = encodeURIComponent(query);
   const safeLimit = Math.max(1, Math.min(10, Math.floor(limit)));
-  let url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=${safeLimit}&addressdetails=1&dedupe=1`;
+  const upstreamLimit = Math.max(safeLimit, Math.min(20, safeLimit * 3));
+  let url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=${upstreamLimit}&addressdetails=1&dedupe=1`;
   if (countryCodes) {
     url += `&countrycodes=${encodeURIComponent(countryCodes)}`;
   }
@@ -124,12 +214,15 @@ async function fetchNominatimSuggestions(
 
   if (!results || results.length === 0) return [];
 
-  return results.map((item) => ({
+  const mapped = results.map((item) => ({
     lat: parseFloat(item.lat),
     lng: parseFloat(item.lon),
     displayName: item.display_name,
     importance: typeof item.importance === 'number' ? item.importance : undefined,
   }));
+
+  const deduped = dedupeByNameAndApproxPosition(mapped);
+  return rankGeocodeResults(query, deduped, countryCodes).slice(0, safeLimit);
 }
 
 async function fetchOrsSuggestions(
@@ -313,6 +406,14 @@ export async function geocodeSuggestions(
       fetchNominatimSuggestions(normalized, safeLimit, cc)
     );
 
+    // If many results look weak, try with the first segment (often the POI/street core).
+    const core = firstAddressSegment(normalized);
+    if (core.length >= 3 && core !== normalized) {
+      const coreResults = await enqueueRequest(() => fetchNominatimSuggestions(core, safeLimit, cc));
+      const merged = dedupeByNameAndApproxPosition([...coreResults, ...results]);
+      results = rankGeocodeResults(normalized, merged, cc).slice(0, safeLimit);
+    }
+
     // If country bias is too strict, retry globally before giving up.
     if (results.length === 0 && cc) {
       results = await enqueueRequest(() =>
@@ -328,6 +429,10 @@ export async function geocodeSuggestions(
     // Last fallback: OpenRouteService geocoder when configured.
     if (results.length === 0) {
       results = await fetchOrsSuggestions(normalized, safeLimit, cc);
+    }
+
+    if (results.length > 0) {
+      results = rankGeocodeResults(normalized, dedupeByNameAndApproxPosition(results), cc).slice(0, safeLimit);
     }
 
     await cacheSet(cacheKey, results, GEOCODE_TTL);
