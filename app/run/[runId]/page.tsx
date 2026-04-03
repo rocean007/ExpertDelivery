@@ -585,9 +585,9 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 no-underline"
-                      style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid var(--border-default)', color: 'var(--accent-green)' }}
+                      style={{ background: 'rgba(74,222,128,0.2)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
                     >
-                      🗺 Next
+                      🧭 Google Maps
                     </a>
                     {run.directionsUrl && (
                       <a
@@ -597,7 +597,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                         className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider no-underline"
                         style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
                       >
-                        Full route
+                        Entire route
                       </a>
                     )}
                   </div>
@@ -710,9 +710,9 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                 borderColor: 'var(--border-default)',
                 color: 'var(--text-secondary)',
               }}
-              title="Switch to dashboard view"
+              title="Minimize map"
             >
-              Dashboard
+              Minimize map
             </button>
             <button
               type="button"
@@ -843,10 +843,10 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 no-underline"
-                  style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid var(--border-default)', color: 'var(--accent-green)' }}
+                  style={{ background: 'rgba(74,222,128,0.2)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)' }}
                   aria-label="Open in Google Maps to next stops"
                 >
-                  🗺 Next
+                  🧭 Google Maps
                 </a>
                 {run.directionsUrl && (
                   <a
@@ -857,7 +857,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                     style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
                     aria-label="Open full optimized route in Google Maps"
                   >
-                    Full route
+                    Entire route
                   </a>
                 )}
               </div>

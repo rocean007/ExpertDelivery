@@ -75,6 +75,16 @@ function FollowDriverLive({
   return null;
 }
 
+function HideLeafletPrefix() {
+  const map = useMap();
+
+  useEffect(() => {
+    map.attributionControl.setPrefix('');
+  }, [map]);
+
+  return null;
+}
+
 interface Props {
   run: RunRecord;
   driverPosition: LatLng | null;
@@ -106,12 +116,14 @@ export default function DriverMap({
       zoom={14}
       style={{ width: '100%', height: '100%' }}
       zoomControl={false}
+      attributionControl
     >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; OpenStreetMap contributors'
       />
 
+      <HideLeafletPrefix />
       <PanToDriver position={driverPosition} />
       <FollowDriverLive position={driverPosition} enabled={followDriver} />
 
