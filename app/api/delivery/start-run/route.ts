@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateSignature } from '@/lib/signing';
 
 export const runtime = 'nodejs';
+const DEFAULT_ALLOWED_ORIGIN = 'https://lighttest.vercel.app';
 
 function resolveHmacSecret(): string | undefined {
   if (process.env.HMAC_SECRET) {
@@ -20,6 +21,9 @@ function buildCorsHeaders(request: NextRequest): Record<string, string> {
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+  if (!allowedOrigins.includes(DEFAULT_ALLOWED_ORIGIN)) {
+    allowedOrigins.push(DEFAULT_ALLOWED_ORIGIN);
+  }
   const origin = request.headers.get('origin') || '';
 
   const headers: Record<string, string> = {
