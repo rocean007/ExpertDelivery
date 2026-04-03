@@ -49,6 +49,11 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
   }, []);
 
   useEffect(() => {
+    setAiResult(null);
+    setRunError(null);
+  }, [promptText]);
+
+  useEffect(() => {
     if (!open) return;
 
     const prevOverflow = document.body.style.overflow;
