@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySignature, verifyTimestamp } from '@/lib/signing';
 
 const PROTECTED_PATHS = [
-  '/api/v1/runs',
   '/api/v1/voice',
 ];
 
