@@ -79,7 +79,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     const clonedRequest = request.clone();
     const body = await clonedRequest.text();
 
-    if (!verifySignature(body, signature, secret)) {
+    if (!(await verifySignature(body, signature, secret))) {
       return NextResponse.json(
         { success: false, error: 'Invalid signature', timestamp: new Date().toISOString() },
         { status: 401 }
