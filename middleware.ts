@@ -6,8 +6,6 @@ const PROTECTED_PATHS = [
   '/api/v1/voice',
 ];
 
-const DEFAULT_ALLOWED_ORIGIN = 'https://lighttest.vercel.app';
-
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
 function normalizePathname(pathname: string): string {
@@ -24,23 +22,6 @@ function isProtectedMethod(method: string): boolean {
 
 function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PATHS.some((p) => pathname.startsWith(p));
-}
-
-function getAllowedOrigins(): string[] {
-  const fromEnv = (process.env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-
-  if (fromEnv.length === 0) {
-    return [DEFAULT_ALLOWED_ORIGIN];
-  }
-
-  if (!fromEnv.includes(DEFAULT_ALLOWED_ORIGIN)) {
-    fromEnv.push(DEFAULT_ALLOWED_ORIGIN);
-  }
-
-  return fromEnv;
 }
 
 /**
@@ -65,19 +46,11 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   // CORS headers for embed routes
   if (normalizedPathname.startsWith('/embed/') || normalizedPathname.startsWith('/api/v1/runs')) {
-    const allowedOrigins = getAllowedOrigins();
-    const origin = request.headers.get('origin') || '';
-
     const corsHeaders: Record<string, string> = {
+      'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, X-Signature, X-Timestamp',
     };
-
-    if (allowedOrigins.includes(origin)) {
-      corsHeaders['Access-Control-Allow-Origin'] = origin;
-    } else if (allowedOrigins.length === 0) {
-      corsHeaders['Access-Control-Allow-Origin'] = '*';
-    }
 
     if (method === 'OPTIONS') {
       return new NextResponse(null, { status: 204, headers: corsHeaders });
