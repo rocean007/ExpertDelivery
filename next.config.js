@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+const defaultAllowedOrigin = 'https://lighttest.vercel.app';
 
 const nextConfig = {
   reactStrictMode: true,
@@ -22,7 +23,7 @@ const nextConfig = {
       {
         source: `${basePath}/api/v1/runs/:runId`,
         headers: [
-          { key: 'Access-Control-Allow-Origin', value: process.env.ALLOWED_ORIGINS || '*' },
+          { key: 'Access-Control-Allow-Origin', value: process.env.ALLOWED_ORIGINS || defaultAllowedOrigin },
           { key: 'Access-Control-Allow-Methods', value: 'GET, OPTIONS' },
           { key: 'Access-Control-Allow-Headers', value: 'Content-Type, X-Signature, X-Timestamp' },
         ],
