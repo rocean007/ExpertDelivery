@@ -92,7 +92,7 @@ export async function flushStopPatchQueue(): Promise<void> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
   const secret = process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
-  let queue = readStopPatchQueue();
+  const queue = readStopPatchQueue();
   if (queue.length === 0) return;
 
   const remaining: QueuedStopPatch[] = [];
