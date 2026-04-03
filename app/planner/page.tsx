@@ -66,6 +66,8 @@ export default function PlannerPage() {
   const [run, setRun] = useState<RunRecord | null>(null);
   const [error, setError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const depotBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const geocodeDebounced = useRef(
     debounce(async (query: string, onResult: (suggestions: GeocodeResult[], bestMatch: LatLng | null) => void, onLoading: (v: boolean) => void) => {
@@ -100,6 +102,10 @@ export default function PlannerPage() {
   }, []);
 
   const selectDepotSuggestion = useCallback((suggestion: GeocodeResult) => {
+    if (depotBlurTimerRef.current) {
+      clearTimeout(depotBlurTimerRef.current);
+      depotBlurTimerRef.current = null;
+    }
     setDepotAddress(suggestion.displayName || `${suggestion.lat.toFixed(6)}, ${suggestion.lng.toFixed(6)}`);
     setDepotPosition({ lat: suggestion.lat, lng: suggestion.lng });
     setDepotSuggestions([]);
@@ -139,6 +145,10 @@ export default function PlannerPage() {
   }, []);
 
   const selectStopSuggestion = useCallback((id: string, suggestion: GeocodeResult) => {
+    if (stopBlurTimerRef.current) {
+      clearTimeout(stopBlurTimerRef.current);
+      stopBlurTimerRef.current = null;
+    }
     setStops((prev) => prev.map((s) => {
       if (s.id !== id) return s;
       return {
@@ -231,53 +241,80 @@ export default function PlannerPage() {
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Plan & optimize delivery routes</p>
         </div>
 
-        <div className="flex-1 p-5 space-y-5 overflow-y-auto">
-          {/* Depot */}
-          <section>
-            <label className="block text-xs font-mono uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
-              🏠 Depot / Warehouse
-            </label>
-            <div className="relative">
-              <input
-                className="input-field"
-                placeholder="Main Warehouse, Kathmandu..."
-                value={depotAddress}
-                onChange={(e) => handleDepotChange(e.target.value)}
-                onFocus={() => setDepotHasFocus(true)}
-                onBlur={() => setDepotHasFocus(false)}
-                aria-label="Depot address"
-              />
-              {depotGeocoding && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1">
-                  <span className="loading-dot w-1.5 h-1.5" />
-                  <span className="loading-dot w-1.5 h-1.5" />
-                  <span className="loading-dot w-1.5 h-1.5" />
-                </div>
-              )}
-              {depotPosition && !depotGeocoding && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--accent-green)' }}>✓</span>
-              )}
-              {depotHasFocus && depotSuggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-44 overflow-y-auto rounded-md" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
-                  {depotSuggestions.map((suggestion, idx) => (
-                    <button
-                      key={`${suggestion.lat}-${suggestion.lng}-${idx}`}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        selectDepotSuggestion(suggestion);
-                      }}
-                      className="w-full text-left px-3 py-2 text-xs transition-colors"
-                      style={{ color: 'var(--text-primary)', borderBottom: idx === depotSuggestions.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}
-                    >
-                      {suggestion.displayName}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+          {/* Depot sits outside the scroll region so autocomplete is not clipped by overflow-y */}
+          <div className="shrink-0 px-5 pt-5 pb-2 relative z-[60]">
+            <section>
+              <label className="block text-xs font-mono uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
+                🏠 Depot / Warehouse
+              </label>
+              <div className="relative">
+                <input
+                  className="input-field"
+                  placeholder="Main Warehouse, Kathmandu..."
+                  value={depotAddress}
+                  onChange={(e) => handleDepotChange(e.target.value)}
+                  onFocus={() => {
+                    if (depotBlurTimerRef.current) {
+                      clearTimeout(depotBlurTimerRef.current);
+                      depotBlurTimerRef.current = null;
+                    }
+                    setDepotHasFocus(true);
+                  }}
+                  onBlur={() => {
+                    depotBlurTimerRef.current = window.setTimeout(() => {
+                      setDepotHasFocus(false);
+                      depotBlurTimerRef.current = null;
+                    }, 220);
+                  }}
+                  autoComplete="street-address"
+                  aria-label="Depot address"
+                  aria-expanded={depotHasFocus && depotSuggestions.length > 0}
+                  aria-controls="depot-suggestions"
+                />
+                {depotGeocoding && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1 pointer-events-none">
+                    <span className="loading-dot w-1.5 h-1.5" />
+                    <span className="loading-dot w-1.5 h-1.5" />
+                    <span className="loading-dot w-1.5 h-1.5" />
+                  </div>
+                )}
+                {depotPosition && !depotGeocoding && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none" style={{ color: 'var(--accent-green)' }}>✓</span>
+                )}
+                {depotHasFocus && depotSuggestions.length > 0 && (
+                  <div
+                    id="depot-suggestions"
+                    role="listbox"
+                    className="absolute left-0 right-0 top-full mt-1 z-[100] max-h-48 overflow-y-auto rounded-md shadow-lg"
+                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}
+                  >
+                    {depotSuggestions.map((suggestion, idx) => (
+                      <button
+                        key={`${suggestion.lat}-${suggestion.lng}-${idx}`}
+                        type="button"
+                        role="option"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectDepotSuggestion(suggestion);
+                        }}
+                        onTouchEnd={(e) => {
+                          e.preventDefault();
+                          selectDepotSuggestion(suggestion);
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-xs transition-colors touch-manipulation active:opacity-90"
+                        style={{ color: 'var(--text-primary)', borderBottom: idx === depotSuggestions.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}
+                      >
+                        {suggestion.displayName}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
 
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 space-y-5">
           {/* Stops */}
           <section>
             <div className="flex items-center justify-between mb-3">
@@ -315,8 +352,20 @@ export default function PlannerPage() {
                       placeholder="Delivery address..."
                       value={stop.address}
                       onChange={(e) => handleStopChange(stop.id, 'address', e.target.value)}
-                      onFocus={() => setActiveAddressStopId(stop.id)}
-                      onBlur={() => setActiveAddressStopId(null)}
+                      onFocus={() => {
+                        if (stopBlurTimerRef.current) {
+                          clearTimeout(stopBlurTimerRef.current);
+                          stopBlurTimerRef.current = null;
+                        }
+                        setActiveAddressStopId(stop.id);
+                      }}
+                      onBlur={() => {
+                        stopBlurTimerRef.current = window.setTimeout(() => {
+                          setActiveAddressStopId(null);
+                          stopBlurTimerRef.current = null;
+                        }, 220);
+                      }}
+                      autoComplete="street-address"
                       aria-label={`Stop ${idx + 1} address`}
                     />
                     {stop.geocoding && (
@@ -330,7 +379,10 @@ export default function PlannerPage() {
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'var(--accent-green)' }}>✓</span>
                     )}
                     {activeAddressStopId === stop.id && stop.suggestions.length > 0 && (
-                      <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-44 overflow-y-auto rounded-md" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+                      <div
+                        className="absolute left-0 right-0 top-full mt-1 z-[100] max-h-48 overflow-y-auto rounded-md shadow-lg"
+                        style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}
+                      >
                         {stop.suggestions.map((suggestion, suggestionIdx) => (
                           <button
                             key={`${suggestion.lat}-${suggestion.lng}-${suggestionIdx}`}
@@ -339,7 +391,11 @@ export default function PlannerPage() {
                               e.preventDefault();
                               selectStopSuggestion(stop.id, suggestion);
                             }}
-                            className="w-full text-left px-3 py-2 text-xs transition-colors"
+                            onTouchEnd={(e) => {
+                              e.preventDefault();
+                              selectStopSuggestion(stop.id, suggestion);
+                            }}
+                            className="w-full text-left px-3 py-2.5 text-xs transition-colors touch-manipulation active:opacity-90"
                             style={{ color: 'var(--text-primary)', borderBottom: suggestionIdx === stop.suggestions.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}
                           >
                             {suggestion.displayName}
@@ -397,6 +453,7 @@ export default function PlannerPage() {
               </span>
             ) : '⚡ Optimize Route'}
           </button>
+          </div>
         </div>
 
         {/* Results sidebar */}
