@@ -1,0 +1,10 @@
+{
+  "name": "OT Delivery Router",
+  "short_name": "OT Delivery",
+  "description": "Driver routing and delivery tracking",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0f0d",
+  "theme_color": "#182210"
+}

@@ -6,6 +6,15 @@ import { use } from 'react';
 import { calculateDistance, findNextUndeliveredStop, isOffRoute } from '@/lib/proximity';
 import { speakText } from '@/lib/elevenlabs';
 import { decodePolyline, buildGoogleMapsUrl } from '@/lib/polyline';
+import {
+  applyStopStatusLocally,
+  enqueueStopPatch,
+  flushStopPatchQueue,
+  loadRunSnapshot,
+  pendingPatchesForRun,
+  saveRunSnapshot,
+} from '@/lib/offline-run';
+import { generateSignature } from '@/lib/signing';
 import type { RunRecord, LatLng, Stop } from '@/types';
 
 const DriverMap = dynamic(() => import('@/components/DriverMap'), {
@@ -39,6 +48,11 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   const [notification, setNotification] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [updatingStop, setUpdatingStop] = useState<string | null>(null);
+  const [loadedFromSnapshot, setLoadedFromSnapshot] = useState(false);
+  const [pendingSync, setPendingSync] = useState(0);
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
 
   const prevDistancesRef = useRef<Map<string, number>>(new Map());
   const alertCooldownRef = useRef<Map<string, number>>(new Map());
@@ -74,16 +88,62 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   const fetchRun = useCallback(async () => {
     try {
       const res = await fetch(`/api/v1/runs/${runId}`);
+
+      if (!res.ok) {
+        const cached = loadRunSnapshot(runId);
+        if (cached) {
+          setRun(cached);
+          setLoadedFromSnapshot(true);
+          setError('');
+          const firstPending = cached.stops.findIndex(
+            (s) => s.status === 'pending' || s.status === 'arrived'
+          );
+          if (firstPending >= 0) setCurrentStopIndex(firstPending);
+        } else {
+          const json = (await res.json().catch(() => ({}))) as { error?: string };
+          setError(json.error || 'Run not found');
+        }
+        setLoading(false);
+        return;
+      }
+
       const json = await res.json() as { success: boolean; data?: RunRecord; error?: string };
       if (json.success && json.data) {
         setRun(json.data);
-        const firstPending = json.data.stops.findIndex((s) => s.status === 'pending' || s.status === 'arrived');
+        saveRunSnapshot(json.data);
+        setLoadedFromSnapshot(false);
+        setError('');
+        const firstPending = json.data.stops.findIndex(
+          (s) => s.status === 'pending' || s.status === 'arrived'
+        );
         if (firstPending >= 0) setCurrentStopIndex(firstPending);
       } else {
-        setError(json.error || 'Run not found');
+        const cached = loadRunSnapshot(runId);
+        if (cached) {
+          setRun(cached);
+          setLoadedFromSnapshot(true);
+          setError('');
+          const fp = cached.stops.findIndex(
+            (s) => s.status === 'pending' || s.status === 'arrived'
+          );
+          if (fp >= 0) setCurrentStopIndex(fp);
+        } else {
+          setError(json.error || 'Run not found');
+        }
       }
     } catch {
-      setError('Failed to load run');
+      const cached = loadRunSnapshot(runId);
+      if (cached) {
+        setRun(cached);
+        setLoadedFromSnapshot(true);
+        setError('');
+        const fp = cached.stops.findIndex(
+          (s) => s.status === 'pending' || s.status === 'arrived'
+        );
+        if (fp >= 0) setCurrentStopIndex(fp);
+      } else {
+        setError('Failed to load run');
+      }
     } finally {
       setLoading(false);
     }
@@ -92,6 +152,34 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   useEffect(() => {
     fetchRun();
   }, [fetchRun]);
+
+  useEffect(() => {
+    setPendingSync(pendingPatchesForRun(runId));
+    flushStopPatchQueue()
+      .catch(() => {})
+      .finally(() => setPendingSync(pendingPatchesForRun(runId)));
+  }, [runId]);
+
+  useEffect(() => {
+    const syncOnline = () => setIsOnline(true);
+    const syncOffline = () => setIsOnline(false);
+    const onOnline = () => {
+      syncOnline();
+      fetchRun();
+      flushStopPatchQueue()
+        .catch(() => {})
+        .finally(() => setPendingSync(pendingPatchesForRun(runId)));
+    };
+    if (typeof navigator !== 'undefined') {
+      setIsOnline(navigator.onLine);
+    }
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', syncOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', syncOffline);
+    };
+  }, [fetchRun, runId]);
 
   // Geolocation tracking
   useEffect(() => {
@@ -142,52 +230,115 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
     }
   }, [driverPosition, run, triggerVoiceAlert]);
 
-  const updateStop = useCallback(async (stopId: string, status: Stop['status']) => {
-    if (!run) return;
-    setUpdatingStop(stopId);
-
-    try {
-      const body = JSON.stringify({ status });
-      const timestamp = String(Math.floor(Date.now() / 1000));
-      const sig = await computeHmac(body, timestamp);
-
-      const res = await fetch(`/api/v1/runs/${runId}/stops/${stopId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-timestamp': timestamp,
-          'x-signature': sig,
-        },
-        body,
-      });
-
-      const json = await res.json() as { success: boolean; data?: RunRecord };
-      if (json.success && json.data) {
-        setRun(json.data);
-        const nextPending = json.data.stops.findIndex((s) => s.status === 'pending' || s.status === 'arrived');
-        if (nextPending >= 0) setCurrentStopIndex(nextPending);
-
-        if (status === 'delivered') {
-          const nextStop = json.data.stops.find((s, i) => i > currentStopIndex && (s.status === 'pending'));
-          const stop = run.stops.find((s) => s.id === stopId);
-          if (stop && nextStop) {
-            const dist = driverPosition
-              ? Math.round(calculateDistance(driverPosition.lat, driverPosition.lng, nextStop.position.lat, nextStop.position.lng))
-              : 0;
-            speakText(`Stop ${stop.label} completed. Next stop is ${nextStop.label}${dist > 0 ? ` in ${dist} meters` : ''}.`).catch(() => {});
-          }
-          if (json.data.status === 'completed') {
-            speakText('All deliveries complete! Great work today.').catch(() => {});
-            showNotification('🎉 All deliveries completed!');
-          }
-        }
+  const announceAfterDelivered = useCallback(
+    (prevRun: RunRecord, newRun: RunRecord, stopId: string) => {
+      const completedIdx = newRun.stops.findIndex((s) => s.id === stopId);
+      const nextStop = newRun.stops.find(
+        (s, i) => i > completedIdx && s.status === 'pending'
+      );
+      const stop = prevRun.stops.find((s) => s.id === stopId);
+      if (stop && nextStop) {
+        const dist = driverPosition
+          ? Math.round(
+              calculateDistance(
+                driverPosition.lat,
+                driverPosition.lng,
+                nextStop.position.lat,
+                nextStop.position.lng
+              )
+            )
+          : 0;
+        speakText(
+          `Stop ${stop.label} completed. Next stop is ${nextStop.label}${dist > 0 ? ` in ${dist} meters` : ''}.`
+        ).catch(() => {});
       }
-    } catch (e) {
-      console.error('[Stop update]', e);
-    } finally {
-      setUpdatingStop(null);
-    }
-  }, [run, runId, currentStopIndex, driverPosition, showNotification]);
+      if (newRun.status === 'completed') {
+        speakText('All deliveries complete! Great work today.').catch(() => {});
+        showNotification('🎉 All deliveries completed!');
+      }
+    },
+    [driverPosition, showNotification]
+  );
+
+  const updateStop = useCallback(
+    async (stopId: string, status: Stop['status']) => {
+      if (!run) return;
+      setUpdatingStop(stopId);
+
+      const body = JSON.stringify({ status });
+      const secret = process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
+      const applyLocal = (reason: 'offline' | 'queued') => {
+        const nowIso = new Date().toISOString();
+        const updated = applyStopStatusLocally(run, stopId, status, nowIso);
+        setRun(updated);
+        saveRunSnapshot(updated);
+        enqueueStopPatch({ runId, stopId, status });
+        setPendingSync(pendingPatchesForRun(runId));
+        const nextPending = updated.stops.findIndex(
+          (s) => s.status === 'pending' || s.status === 'arrived'
+        );
+        if (nextPending >= 0) setCurrentStopIndex(nextPending);
+        if (status === 'delivered') {
+          announceAfterDelivered(run, updated, stopId);
+        }
+        showNotification(
+          reason === 'offline'
+            ? 'Offline — stop saved on device. Will sync when you are back online.'
+            : 'Could not reach server — saved on device. Will retry automatically.'
+        );
+      };
+
+      try {
+        const timestamp = String(Math.floor(Date.now() / 1000));
+        const sig = await generateSignature(body, secret);
+
+        const res = await fetch(`/api/v1/runs/${runId}/stops/${stopId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-timestamp': timestamp,
+            'x-signature': sig,
+          },
+          body,
+        });
+
+        if (res.status === 401) {
+          showNotification('Could not authorize update. Check your connection and try again.');
+          return;
+        }
+
+        const json = (await res.json()) as { success: boolean; data?: RunRecord; error?: string };
+        if (json.success && json.data) {
+          setRun(json.data);
+          saveRunSnapshot(json.data);
+          setPendingSync(pendingPatchesForRun(runId));
+          const nextPending = json.data.stops.findIndex(
+            (s) => s.status === 'pending' || s.status === 'arrived'
+          );
+          if (nextPending >= 0) setCurrentStopIndex(nextPending);
+
+          if (status === 'delivered') {
+            announceAfterDelivered(run, json.data, stopId);
+          }
+          return;
+        }
+
+        const retryAsOffline =
+          !navigator.onLine || res.status >= 500 || res.status === 408 || res.status === 0;
+        if (retryAsOffline) {
+          applyLocal('queued');
+        } else {
+          showNotification(json.error || 'Could not update stop');
+        }
+      } catch (e) {
+        console.error('[Stop update]', e);
+        applyLocal('offline');
+      } finally {
+        setUpdatingStop(null);
+      }
+    },
+    [run, runId, announceAfterDelivered, showNotification]
+  );
 
   const enableVoice = useCallback(async () => {
     if ('Notification' in window) {
@@ -243,7 +394,33 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       </div>
 
       {/* Top HUD */}
-      <div className="absolute top-0 left-0 right-0 z-20 p-3 flex items-center gap-3">
+      <div className="absolute top-0 left-0 right-0 z-20 p-3 flex flex-col gap-2">
+        {(!isOnline || loadedFromSnapshot || pendingSync > 0) && (
+          <div
+            className="rounded-xl px-3 py-2 text-xs font-mono leading-snug"
+            style={{
+              background: 'rgba(251,191,36,0.12)',
+              border: '1px solid rgba(251,191,36,0.35)',
+              color: '#fbbf24',
+            }}
+            role="status"
+          >
+            {!isOnline && (
+              <span>
+                Offline mode — GPS still works. Route and map tiles use data cached from your last visit.
+              </span>
+            )}
+            {isOnline && loadedFromSnapshot && (
+              <span>Showing saved copy while reconnecting — pull to refresh or wait for sync. </span>
+            )}
+            {pendingSync > 0 && (
+              <span>
+                {pendingSync} stop update{pendingSync === 1 ? '' : 's'} pending sync to server.
+              </span>
+            )}
+          </div>
+        )}
+        <div className="flex items-center gap-3 w-full">
         <div className="flex-1 rounded-xl px-4 py-2 flex items-center gap-4" style={{ background: 'rgba(10,15,13,0.92)', border: '1px solid var(--border-default)', backdropFilter: 'blur(12px)' }}>
           <div className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--accent-green)' }}>
             {run.driverName || 'Driver'}
@@ -264,6 +441,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
         >
           🔊
         </button>
+        </div>
       </div>
 
       {/* Notification toast */}
@@ -411,10 +589,3 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   );
 }
 
-async function computeHmac(body: string, _timestamp: string): Promise<string> {
-  const secret = process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}

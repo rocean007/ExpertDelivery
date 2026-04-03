@@ -1,11 +1,15 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 
 export const metadata: Metadata = {
   title: 'OT Delivery Router',
   description: 'Optimized delivery route planning for Ocean Tarkari',
   keywords: ['delivery', 'route optimization', 'logistics'],
   robots: 'noindex, nofollow',
+  manifest: '/manifest.webmanifest',
+  themeColor: '#182210',
+  appleWebApp: { capable: true, title: 'OT Delivery' },
 };
 
 export default function RootLayout({
@@ -25,6 +29,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
+        <ServiceWorkerRegister />
         {children}
       </body>
     </html>
