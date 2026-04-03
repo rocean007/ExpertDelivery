@@ -1,5 +1,6 @@
 import type { RunRecord, Stop } from '@/types';
 import { getSignedHeaders } from '@/lib/client-signing';
+import { withBasePath } from '@/lib/base-path';
 
 const SNAPSHOT_PREFIX = 'ot-run-snapshot:';
 const SYNC_QUEUE_KEY = 'ot-stop-sync-queue';
@@ -100,7 +101,7 @@ export async function flushStopPatchQueue(): Promise<void> {
     try {
       const body = JSON.stringify({ status: item.status });
       const signedHeaders = await getSignedHeaders(body);
-      const res = await fetch(`/api/v1/runs/${item.runId}/stops/${item.stopId}`, {
+      const res = await fetch(withBasePath(`/api/v1/runs/${item.runId}/stops/${item.stopId}`), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

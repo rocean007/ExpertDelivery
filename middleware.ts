@@ -6,6 +6,16 @@ const PROTECTED_PATHS = [
   '/api/v1/voice',
 ];
 
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
+function normalizePathname(pathname: string): string {
+  if (BASE_PATH && pathname.startsWith(BASE_PATH)) {
+    const stripped = pathname.slice(BASE_PATH.length);
+    return stripped.startsWith('/') ? stripped : `/${stripped}`;
+  }
+  return pathname;
+}
+
 function isProtectedMethod(method: string): boolean {
   return ['POST', 'PATCH', 'DELETE', 'PUT'].includes(method.toUpperCase());
 }
@@ -31,10 +41,11 @@ function resolveHmacSecret(): string | undefined {
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
+  const normalizedPathname = normalizePathname(pathname);
   const method = request.method;
 
   // CORS headers for embed routes
-  if (pathname.startsWith('/embed/') || pathname.startsWith('/api/v1/runs')) {
+  if (normalizedPathname.startsWith('/embed/') || normalizedPathname.startsWith('/api/v1/runs')) {
     const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim());
     const origin = request.headers.get('origin') || '';
 
@@ -53,7 +64,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       return new NextResponse(null, { status: 204, headers: corsHeaders });
     }
 
-    if (!isProtectedMethod(method) || !isProtectedPath(pathname)) {
+    if (!isProtectedMethod(method) || !isProtectedPath(normalizedPathname)) {
       const response = NextResponse.next();
       for (const [key, value] of Object.entries(corsHeaders)) {
         response.headers.set(key, value);
@@ -63,7 +74,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   }
 
   // HMAC validation for state-changing API calls
-  if (isProtectedMethod(method) && isProtectedPath(pathname)) {
+  if (isProtectedMethod(method) && isProtectedPath(normalizedPathname)) {
     const secret = resolveHmacSecret();
     if (!secret) {
       console.error('[Middleware] HMAC_SECRET not configured (required in production)');
@@ -106,5 +117,5 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/api/v1/:path*', '/embed/:path*'],
+  matcher: ['/api/v1/:path*', '/embed/:path*', '/expertdelivery/api/v1/:path*', '/expertdelivery/embed/:path*'],
 };

@@ -5,6 +5,14 @@ const CACHE_PAGES = `${VERSION}-pages`;
 const CACHE_API = `${VERSION}-api`;
 const CACHE_TILES = `${VERSION}-tiles`;
 const MAX_TILE_ENTRIES = 400;
+const BASE_PATH = '/expertdelivery';
+
+function stripBasePath(pathname) {
+  if (pathname.startsWith(BASE_PATH + '/')) {
+    return pathname.slice(BASE_PATH.length);
+  }
+  return pathname;
+}
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -107,13 +115,14 @@ self.addEventListener('fetch', (event) => {
   } catch {
     return;
   }
+  const path = stripBasePath(url.pathname);
 
   if (url.hostname === 'tile.openstreetmap.org') {
     event.respondWith(tileCacheStrategy(request));
     return;
   }
 
-  if (url.pathname === '/sw.js' || url.pathname === '/manifest.webmanifest') {
+  if (path === '/sw.js' || path === '/manifest.webmanifest') {
     return;
   }
 
@@ -124,12 +133,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/_next/static/')) {
+  if (path.startsWith('/_next/static/')) {
     event.respondWith(cacheFirst(request, CACHE_STATIC));
     return;
   }
 
-  if (url.pathname.startsWith('/api/v1/runs/') && !url.pathname.includes('/stops/')) {
+  if (path.startsWith('/api/v1/runs/') && !path.includes('/stops/')) {
     event.respondWith(networkFirstApi(request));
     return;
   }
