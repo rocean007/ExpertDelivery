@@ -1,6 +1,10 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
+
+export const viewport: Viewport = {
+  themeColor: '#182210',
+};
 
 export const metadata: Metadata = {
   title: 'OT Delivery Router',
@@ -8,7 +12,6 @@ export const metadata: Metadata = {
   keywords: ['delivery', 'route optimization', 'logistics'],
   robots: 'noindex, nofollow',
   manifest: '/manifest.webmanifest',
-  themeColor: '#182210',
   appleWebApp: { capable: true, title: 'OT Delivery' },
 };
 
