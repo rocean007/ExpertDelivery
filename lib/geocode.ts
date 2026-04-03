@@ -53,8 +53,14 @@ function enqueueRequest<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function fetchNominatim(query: string): Promise<GeocodeResult | null> {
+  const suggestions = await fetchNominatimSuggestions(query, 1);
+  return suggestions[0] ?? null;
+}
+
+async function fetchNominatimSuggestions(query: string, limit: number): Promise<GeocodeResult[]> {
   const encoded = encodeURIComponent(query);
-  const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&addressdetails=1`;
+  const safeLimit = Math.max(1, Math.min(8, Math.floor(limit)));
+  const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=${safeLimit}&addressdetails=1`;
 
   const response = await fetch(url, {
     headers: {
@@ -73,14 +79,13 @@ async function fetchNominatim(query: string): Promise<GeocodeResult | null> {
     display_name: string;
   }>;
 
-  if (!results || results.length === 0) return null;
+  if (!results || results.length === 0) return [];
 
-  const first = results[0];
-  return {
-    lat: parseFloat(first.lat),
-    lng: parseFloat(first.lon),
-    displayName: first.display_name,
-  };
+  return results.map((item) => ({
+    lat: parseFloat(item.lat),
+    lng: parseFloat(item.lon),
+    displayName: item.display_name,
+  }));
 }
 
 async function fetchReverseNominatim(
@@ -145,5 +150,28 @@ export async function reverseGeocode(
   } catch (error) {
     console.error('[Geocode] Error reverse geocoding:', lat, lng, error);
     return null;
+  }
+}
+
+export async function geocodeSuggestions(
+  address: string,
+  limit = 5
+): Promise<GeocodeResult[]> {
+  const normalized = normalizeQuery(address);
+  const safeLimit = Math.max(1, Math.min(8, Math.floor(limit)));
+  const cacheKey = `geocode:suggest:${normalized}:${safeLimit}`;
+
+  const cached = await cacheGet<GeocodeResult[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const results = await enqueueRequest(() =>
+      fetchNominatimSuggestions(normalized, safeLimit)
+    );
+    await cacheSet(cacheKey, results, GEOCODE_TTL);
+    return results;
+  } catch (error) {
+    console.error('[Geocode] Error fetching suggestions:', address, error);
+    return [];
   }
 }

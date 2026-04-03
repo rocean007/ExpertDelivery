@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { geocodeAddress } from '@/lib/geocode';
-import type { ApiResponse, LatLng } from '@/types';
+import { geocodeSuggestions } from '@/lib/geocode';
+import type { ApiResponse, GeocodeLookupResult } from '@/types';
 
 export const runtime = 'nodejs';
 
@@ -12,17 +12,24 @@ function failure(error: string, status = 400): NextResponse<ApiResponse<never>> 
   return NextResponse.json({ success: false, error, timestamp: new Date().toISOString() }, { status });
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<LatLng | null>>> {
+export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<GeocodeLookupResult>>> {
   const { searchParams } = req.nextUrl;
   const q = searchParams.get('q');
+  const limitParam = searchParams.get('limit');
+  const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 5;
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(8, parsedLimit)) : 5;
 
   if (!q || q.trim().length < 3) {
     return failure('Query parameter "q" is required and must be at least 3 characters');
   }
 
   try {
-    const result = await geocodeAddress(q.trim());
-    return success(result);
+    const suggestions = await geocodeSuggestions(q.trim(), limit);
+    const best = suggestions[0] ?? null;
+    return success({
+      bestMatch: best ? { lat: best.lat, lng: best.lng } : null,
+      suggestions,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Geocoding failed';
     return failure(msg, 500);

@@ -118,6 +118,11 @@ export interface GeocodeResult {
   displayName?: string;
 }
 
+export interface GeocodeLookupResult {
+  bestMatch: LatLng | null;
+  suggestions: GeocodeResult[];
+}
+
 export interface ProximityAlert {
   stopIndex: number;
   stop: Stop;
