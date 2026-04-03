@@ -15,7 +15,7 @@ import {
   saveRunSnapshot,
 } from '@/lib/offline-run';
 import { clearLivePath, loadLivePath, saveLivePath } from '@/lib/live-path-storage';
-import { generateSignature } from '@/lib/signing';
+import { getSignedHeaders } from '@/lib/client-signing';
 import { RunAiAnalysisPanel } from '@/components/RunAiAnalysisPanel';
 import type { RunRecord, LatLng, Stop } from '@/types';
 
@@ -305,7 +305,6 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       setUpdatingStop(stopId);
 
       const body = JSON.stringify({ status });
-      const secret = process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
       const applyLocal = (reason: 'offline' | 'queued') => {
         const nowIso = new Date().toISOString();
         const updated = applyStopStatusLocally(run, stopId, status, nowIso);
@@ -328,15 +327,13 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       };
 
       try {
-        const timestamp = String(Math.floor(Date.now() / 1000));
-        const sig = await generateSignature(body, secret);
+        const signedHeaders = await getSignedHeaders(body);
 
         const res = await fetch(`/api/v1/runs/${runId}/stops/${stopId}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            'x-timestamp': timestamp,
-            'x-signature': sig,
+            ...signedHeaders,
           },
           body,
         });
