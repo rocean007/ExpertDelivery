@@ -50,7 +50,8 @@ export async function getTripOptimization(
   if (cached) return cached;
 
   const coordStr = coordString(coords);
-  const url = `${OSRM_BASE}/trip/v1/driving/${coordStr}?roundtrip=false&source=first&destination=last&overview=full&geometries=polyline`;
+  // `destination=any` lets OSRM choose the best final stop; `last` would fix the last input coord as terminus.
+  const url = `${OSRM_BASE}/trip/v1/driving/${coordStr}?roundtrip=false&source=first&destination=any&overview=full&geometries=polyline`;
 
   const response = await fetchWithRetry(url);
   const data = (await response.json()) as OsrmTripResponse;

@@ -26,6 +26,8 @@ export interface RunRecord {
   polyline: string;
   totalDistanceKm: number;
   totalDurationMin: number;
+  /** Same visit order as `stops`; opens turn-by-turn directions in Google Maps (no API key). */
+  directionsUrl?: string;
   status: 'active' | 'completed' | 'archived';
   driverName?: string;
   driverPhone?: string;
@@ -116,10 +118,19 @@ export interface GeocodeResult {
   lat: number;
   lng: number;
   displayName?: string;
+  /** Nominatim importance; higher is typically a better global match. */
+  importance?: number;
+}
+
+export type GeocodeMatchConfidence = 'high' | 'medium' | 'low';
+
+export interface GeocodeBestMatch extends LatLng {
+  displayName?: string;
+  confidence: GeocodeMatchConfidence;
 }
 
 export interface GeocodeLookupResult {
-  bestMatch: LatLng | null;
+  bestMatch: GeocodeBestMatch | null;
   suggestions: GeocodeResult[];
 }
 

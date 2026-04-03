@@ -1,8 +1,48 @@
 import { cacheGet, cacheSet } from './kv';
-import type { GeocodeResult, LatLng } from '@/types';
+import type { GeocodeBestMatch, GeocodeMatchConfidence, GeocodeResult, LatLng } from '@/types';
 
 const GEOCODE_TTL = 86400; // 24 hours
 const RATE_LIMIT_MS = 1000; // 1 request per second
+
+const DEFAULT_COUNTRY_CODES =
+  typeof process !== 'undefined' && process.env.NOMINATIM_COUNTRY_CODES
+    ? process.env.NOMINATIM_COUNTRY_CODES.trim().toLowerCase()
+    : '';
+
+export interface GeocodeRequestOptions {
+  /** Comma-separated ISO 3166-1 alpha2 list, e.g. `np,us`. Passed to Nominatim `countrycodes`. */
+  countryCodes?: string;
+}
+
+function mergeCountryCodes(explicit?: string): string | undefined {
+  const fromEnv = DEFAULT_COUNTRY_CODES || undefined;
+  const raw = (explicit ?? fromEnv)?.replace(/\s/g, '').toLowerCase();
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
+function confidenceFromSuggestions(
+  suggestions: GeocodeResult[]
+): GeocodeMatchConfidence {
+  if (suggestions.length <= 1) return 'high';
+  const a = suggestions[0].importance ?? 0;
+  const b = suggestions[1].importance ?? 0;
+  if (a - b >= 0.12 || (b > 0 && a / b >= 1.35)) return 'high';
+  if (a - b >= 0.04) return 'medium';
+  return 'low';
+}
+
+export function toGeocodeBestMatch(
+  suggestions: GeocodeResult[]
+): GeocodeBestMatch | null {
+  const top = suggestions[0];
+  if (!top) return null;
+  return {
+    lat: top.lat,
+    lng: top.lng,
+    displayName: top.displayName,
+    confidence: confidenceFromSuggestions(suggestions),
+  };
+}
 
 let lastRequestTime = 0;
 const requestQueue: Array<() => void> = [];
@@ -52,15 +92,17 @@ function enqueueRequest<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
-async function fetchNominatim(query: string): Promise<GeocodeResult | null> {
-  const suggestions = await fetchNominatimSuggestions(query, 1);
-  return suggestions[0] ?? null;
-}
-
-async function fetchNominatimSuggestions(query: string, limit: number): Promise<GeocodeResult[]> {
+async function fetchNominatimSuggestions(
+  query: string,
+  limit: number,
+  countryCodes?: string
+): Promise<GeocodeResult[]> {
   const encoded = encodeURIComponent(query);
-  const safeLimit = Math.max(1, Math.min(8, Math.floor(limit)));
-  const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=${safeLimit}&addressdetails=1`;
+  const safeLimit = Math.max(1, Math.min(10, Math.floor(limit)));
+  let url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=${safeLimit}&addressdetails=1&dedupe=1`;
+  if (countryCodes) {
+    url += `&countrycodes=${encodeURIComponent(countryCodes)}`;
+  }
 
   const response = await fetch(url, {
     headers: {
@@ -77,6 +119,7 @@ async function fetchNominatimSuggestions(query: string, limit: number): Promise<
     lat: string;
     lon: string;
     display_name: string;
+    importance?: number;
   }>;
 
   if (!results || results.length === 0) return [];
@@ -85,6 +128,7 @@ async function fetchNominatimSuggestions(query: string, limit: number): Promise<
     lat: parseFloat(item.lat),
     lng: parseFloat(item.lon),
     displayName: item.display_name,
+    importance: typeof item.importance === 'number' ? item.importance : undefined,
   }));
 }
 
@@ -108,26 +152,20 @@ async function fetchReverseNominatim(
 }
 
 export async function geocodeAddress(
-  address: string
+  address: string,
+  options?: GeocodeRequestOptions
 ): Promise<LatLng | null> {
-  const normalized = normalizeQuery(address);
-  const cacheKey = `geocode:${normalized}`;
+  const resolved = await geocodeTopResult(address, options);
+  return resolved ? { lat: resolved.lat, lng: resolved.lng } : null;
+}
 
-  const cached = await cacheGet<GeocodeResult>(cacheKey);
-  if (cached) {
-    return { lat: cached.lat, lng: cached.lng };
-  }
-
-  try {
-    const result = await enqueueRequest(() => fetchNominatim(normalized));
-    if (!result) return null;
-
-    await cacheSet(cacheKey, result, GEOCODE_TTL);
-    return { lat: result.lat, lng: result.lng };
-  } catch (error) {
-    console.error('[Geocode] Error geocoding address:', address, error);
-    return null;
-  }
+/** Best Nominatim hit (by relevance), with optional country bias — same source as suggestions. */
+export async function geocodeTopResult(
+  address: string,
+  options?: GeocodeRequestOptions
+): Promise<GeocodeResult | null> {
+  const results = await geocodeSuggestions(address, 1, options);
+  return results[0] ?? null;
 }
 
 export async function reverseGeocode(
@@ -155,18 +193,21 @@ export async function reverseGeocode(
 
 export async function geocodeSuggestions(
   address: string,
-  limit = 5
+  limit = 5,
+  options?: GeocodeRequestOptions
 ): Promise<GeocodeResult[]> {
   const normalized = normalizeQuery(address);
-  const safeLimit = Math.max(1, Math.min(8, Math.floor(limit)));
-  const cacheKey = `geocode:suggest:${normalized}:${safeLimit}`;
+  const safeLimit = Math.max(1, Math.min(10, Math.floor(limit)));
+  const country = mergeCountryCodes(options?.countryCodes) ?? '';
+  const cacheKey = `geocode:suggest:${normalized}:${safeLimit}:${country}`;
 
   const cached = await cacheGet<GeocodeResult[]>(cacheKey);
   if (cached) return cached;
 
   try {
+    const cc = mergeCountryCodes(options?.countryCodes);
     const results = await enqueueRequest(() =>
-      fetchNominatimSuggestions(normalized, safeLimit)
+      fetchNominatimSuggestions(normalized, safeLimit, cc)
     );
     await cacheSet(cacheKey, results, GEOCODE_TTL);
     return results;
