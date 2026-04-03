@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { FREE_AI_CHAT_LINKS } from '@/lib/free-ai-chat-links';
 import { buildRunAnalysisPrompt } from '@/lib/run-analysis-prompt';
-import { withBasePath } from '@/lib/base-path';
 import type { RunRecord } from '@/types';
 
 interface Props {
@@ -12,45 +12,19 @@ interface Props {
   compact?: boolean;
 }
 
-interface AiModelAnswer {
-  model: string;
-  label: string;
-  ok: boolean;
-  answer?: string;
-  error?: string;
-  latencyMs: number;
-}
-
-interface AiAggregateResult {
-  answer: string;
-  promptPreview: string;
-  modelAnswers: AiModelAnswer[];
-}
-
-interface AiApiResponse {
-  success: boolean;
-  data?: AiAggregateResult;
-  error?: string;
-}
-
 export function RunAiAnalysisPanel({ run, compact }: Props) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const [aiResult, setAiResult] = useState<AiAggregateResult | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [activeChatLabel, setActiveChatLabel] = useState(FREE_AI_CHAT_LINKS[0]?.label ?? '');
+  const [frameLoading, setFrameLoading] = useState(false);
   const textareaId = useId();
   const promptText = buildRunAnalysisPrompt(run);
+  const activeChat = FREE_AI_CHAT_LINKS.find((item) => item.label === activeChatLabel) ?? FREE_AI_CHAT_LINKS[0];
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  useEffect(() => {
-    setAiResult(null);
-    setRunError(null);
-  }, [promptText]);
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +45,11 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !activeChat) return;
+    setFrameLoading(true);
+  }, [open, activeChat]);
+
   const copy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(promptText);
@@ -89,40 +68,9 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
     }
   }, [promptText, textareaId]);
 
-  const runAi = useCallback(async () => {
-    setIsRunning(true);
-    setRunError(null);
-
-    try {
-      const res = await fetch(withBasePath('/api/v1/ai'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: promptText }),
-      });
-
-      const json = (await res.json().catch(() => ({}))) as AiApiResponse;
-
-      if (!res.ok || !json.success || !json.data) {
-        setRunError(json.error || 'AI request failed. Please retry.');
-        return;
-      }
-
-      setAiResult(json.data);
-    } catch (err) {
-      setRunError(err instanceof Error ? err.message : 'Network error while contacting AI endpoint.');
-    } finally {
-      setIsRunning(false);
-    }
-  }, [promptText]);
-
-  const openAndRun = useCallback(() => {
+  const openWorkspace = useCallback(() => {
     setOpen(true);
-    if (!isRunning && !aiResult) {
-      void runAi();
-    }
-  }, [isRunning, aiResult, runAi]);
+  }, []);
 
   const modal = open ? (
     <div
@@ -135,7 +83,7 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
         role="dialog"
         aria-labelledby={`${textareaId}-title`}
         aria-modal="true"
-        className="w-full sm:max-w-xl max-h-[92dvh] sm:max-h-[85dvh] overflow-hidden flex flex-col rounded-t-2xl sm:rounded-2xl shadow-2xl border"
+        className="w-full sm:max-w-6xl max-h-[92dvh] sm:max-h-[88dvh] overflow-hidden flex flex-col rounded-t-2xl sm:rounded-2xl shadow-2xl border"
         style={{
           background: 'var(--bg-secondary)',
           borderColor: 'var(--border-default)',
@@ -148,10 +96,10 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
         >
           <div>
             <h2 id={`${textareaId}-title`} className="font-mono text-sm font-bold uppercase tracking-wider" style={{ color: '#c4b5fd' }}>
-              Route AI analysis
+              Route AI workspace
             </h2>
             <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              This runs directly in-app: it sends your route prompt to multiple no-key model APIs and returns one concise merged answer.
+              This keeps you inside your site and loads the official chat pages directly when the provider allows embedding. Copy the route prompt, paste it into the selected chat, and compare answers there.
             </p>
           </div>
           <button
@@ -165,55 +113,113 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div className="rounded-xl border p-3" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-default)' }}>
-            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
-              AI consensus
-            </p>
-            {aiResult ? (
-              <>
-                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                  {aiResult.answer}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)] h-full min-h-[32rem]">
+            <section className="space-y-4 min-w-0">
+              <div className="rounded-xl border p-3" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-default)' }}>
+                <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  Official chat services
                 </p>
-                <div className="mt-3 space-y-1">
-                  {aiResult.modelAnswers.map((item) => (
-                    <p key={`${item.model}-${item.label}`} className="text-[10px] font-mono" style={{ color: item.ok ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                      {item.ok ? '✓' : '✕'} {item.label} ({item.latencyMs}ms){item.ok ? '' : ` - ${item.error || 'failed'}`}
-                    </p>
-                  ))}
+                <div className="grid gap-2">
+                  {FREE_AI_CHAT_LINKS.map((item) => {
+                    const active = item.label === activeChat?.label;
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => setActiveChatLabel(item.label)}
+                        className="w-full rounded-lg border px-3 py-2 text-left transition-colors"
+                        style={{
+                          background: active ? 'rgba(167,139,250,0.12)' : 'var(--bg-secondary)',
+                          borderColor: active ? 'rgba(167,139,250,0.45)' : 'var(--border-default)',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        <div className="text-xs font-mono uppercase tracking-wider" style={{ color: active ? '#c4b5fd' : 'var(--text-secondary)' }}>
+                          {item.label}
+                        </div>
+                        <div className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                          {item.note}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-              </>
-            ) : (
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                No response yet. Press Start AI to generate a short consensus answer.
-              </p>
-            )}
-            {runError ? (
-              <p className="text-xs mt-2" style={{ color: 'var(--accent-red)' }}>
-                {runError}
-              </p>
-            ) : null}
+              </div>
+
+              <div className="rounded-xl border p-3" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-default)' }}>
+                <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  Route prompt
+                </p>
+                <textarea
+                  id={textareaId}
+                  readOnly
+                  value={promptText}
+                  rows={compact ? 10 : 14}
+                  className="w-full rounded-xl px-3 py-2 text-xs font-mono leading-relaxed resize-y min-h-[12rem] border"
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    borderColor: 'var(--border-default)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+                <div className="grid gap-2 mt-3 sm:grid-cols-2">
+                  <button type="button" onClick={() => void copy()} className="btn-primary w-full py-2.5 text-sm">
+                    {copied ? '✓ Copied to clipboard' : 'Copy prompt'}
+                  </button>
+                  {activeChat ? (
+                    <a
+                      href={activeChat.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-secondary w-full py-2.5 text-sm text-center"
+                    >
+                      Open {activeChat.label} in new tab
+                    </a>
+                  ) : null}
+                </div>
+                <p className="text-xs mt-3 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  Some providers block iframe embedding with browser security headers. When that happens, use the new-tab button for that provider.
+                </p>
+              </div>
+            </section>
+
+            <section className="min-w-0 rounded-xl border overflow-hidden flex flex-col" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-default)' }}>
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                    Embedded chat
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-primary)' }}>
+                    {activeChat?.label ?? 'No provider selected'}
+                  </p>
+                </div>
+                {frameLoading ? (
+                  <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: '#c4b5fd' }}>
+                    Loading...
+                  </p>
+                ) : null}
+              </div>
+
+              {activeChat ? (
+                <iframe
+                  key={activeChat.href}
+                  src={activeChat.href}
+                  title={`${activeChat.label} chat`}
+                  className="flex-1 min-h-[24rem] w-full"
+                  referrerPolicy="no-referrer"
+                  allow="clipboard-read; clipboard-write"
+                  onLoad={() => setFrameLoading(false)}
+                />
+              ) : (
+                <div className="flex-1 grid place-items-center px-6 text-center">
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Select a provider to load its official chat page here.
+                  </p>
+                </div>
+              )}
+            </section>
           </div>
-
-          <button type="button" onClick={() => void runAi()} className="btn-primary w-full py-2.5 text-sm" disabled={isRunning}>
-            {isRunning ? 'Running multi-model AI...' : 'Run again'}
-          </button>
-
-          <textarea
-            id={textareaId}
-            readOnly
-            value={promptText}
-            rows={compact ? 10 : 14}
-            className="w-full rounded-xl px-3 py-2 text-xs font-mono leading-relaxed resize-y min-h-[10rem] border"
-            style={{
-              background: 'var(--bg-card)',
-              borderColor: 'var(--border-default)',
-              color: 'var(--text-primary)',
-            }}
-          />
-          <button type="button" onClick={() => void copy()} className="btn-primary w-full py-2.5 text-sm">
-            {copied ? '✓ Copied to clipboard' : 'Copy prompt'}
-          </button>
         </div>
       </div>
     </div>
@@ -223,7 +229,7 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
     <>
       <button
         type="button"
-        onClick={openAndRun}
+        onClick={openWorkspace}
         className={
           compact
             ? 'px-2 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider border transition-colors'
@@ -241,7 +247,7 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {compact ? '🤖 AI' : '🤖 Start Route AI'}
+        {compact ? '🤖 AI' : '🤖 Open AI Workspace'}
       </button>
       {mounted ? createPortal(modal, document.body) : null}
     </>
