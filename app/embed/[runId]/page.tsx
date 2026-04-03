@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, use } from 'react';
 import dynamic from 'next/dynamic';
+import { withBasePath } from '@/lib/base-path';
 import type { RunRecord, Stop } from '@/types';
 
 const EmbedMap = dynamic(() => import('@/components/EmbedMap'), {
@@ -36,7 +37,7 @@ export default function EmbedPage({ params }: { params: Promise<{ runId: string 
 
   const fetchRun = async () => {
     try {
-      const res = await fetch(`/api/v1/runs/${runId}`);
+      const res = await fetch(withBasePath(`/api/v1/runs/${runId}`));
       const json = await res.json() as { success: boolean; data?: RunRecord; error?: string };
       if (json.success && json.data) {
         setRun(json.data);
@@ -157,7 +158,7 @@ export default function EmbedPage({ params }: { params: Promise<{ runId: string 
           {run.totalDistanceKm} km · {run.totalDurationMin} min total
         </div>
         <a
-          href={`/run/${run.runId}`}
+          href={withBasePath(`/run/${run.runId}`)}
           target="_blank"
           rel="noopener noreferrer"
           style={{ fontSize: '11px', color: 'var(--accent-green)', fontFamily: 'monospace', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--border-default)', borderRadius: '6px' }}

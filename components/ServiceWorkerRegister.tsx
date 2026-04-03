@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { withBasePath } from '@/lib/base-path';
 
 /**
  * Registers the app shell / tile / API caches for offline driver use.
@@ -16,7 +17,7 @@ export function ServiceWorkerRegister() {
 
     if (!enable) return;
 
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
+    navigator.serviceWorker.register(withBasePath('/sw.js')).catch((err) => {
       console.warn('[SW] Registration failed:', err);
     });
   }, []);

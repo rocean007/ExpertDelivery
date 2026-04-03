@@ -1,5 +1,6 @@
 const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
 const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Adam (English)
+import { withBasePath } from '@/lib/base-path';
 
 interface VoiceSettings {
   stability: number;
@@ -95,7 +96,7 @@ export async function speakText(
   }
 
   try {
-    const response = await fetch('/api/v1/voice/alert', {
+    const response = await fetch(withBasePath('/api/v1/voice/alert'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voiceId }),

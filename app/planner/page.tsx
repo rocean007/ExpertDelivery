@@ -4,6 +4,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { RunAiAnalysisPanel } from '@/components/RunAiAnalysisPanel';
 import { getSignedHeaders } from '@/lib/client-signing';
+import { withBasePath } from '@/lib/base-path';
 import type { RunRecord, LatLng, GeocodeResult, GeocodeLookupResult } from '@/types';
 
 const PlannerMap = dynamic(() => import('@/components/PlannerMap'), {
@@ -48,7 +49,7 @@ function geocodeRequestUrl(query: string, limit = 8): string {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   const country = process.env.NEXT_PUBLIC_NOMINATIM_COUNTRY_CODES?.trim().toLowerCase();
   if (country) params.set('country', country);
-  return `/api/v1/geocode?${params.toString()}`;
+  return withBasePath(`/api/v1/geocode?${params.toString()}`);
 }
 
 export default function PlannerPage() {
@@ -196,7 +197,7 @@ export default function PlannerPage() {
       const body = JSON.stringify(payload);
       const signedHeaders = await getSignedHeaders(body);
 
-      const res = await fetch('/api/v1/runs', {
+      const res = await fetch(withBasePath('/api/v1/runs'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -471,7 +472,7 @@ export default function PlannerPage() {
             </div>
             <div className="flex flex-col gap-2">
               <a
-                href={`/run/${run.runId}`}
+                href={withBasePath(`/run/${run.runId}`)}
                 className="btn-primary w-full py-3 text-sm flex items-center justify-center gap-2 no-underline"
               >
                 🚀 Start Run

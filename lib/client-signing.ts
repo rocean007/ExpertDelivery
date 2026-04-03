@@ -1,3 +1,5 @@
+import { withBasePath } from '@/lib/base-path';
+
 type SignApiResponse = {
   success: boolean;
   data?: {
@@ -8,7 +10,7 @@ type SignApiResponse = {
 };
 
 export async function getSignedHeaders(payload: string): Promise<{ 'x-timestamp': string; 'x-signature': string }> {
-  const res = await fetch('/api/v1/sign', {
+  const res = await fetch(withBasePath('/api/v1/sign'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

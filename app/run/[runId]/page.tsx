@@ -16,6 +16,7 @@ import {
 } from '@/lib/offline-run';
 import { clearLivePath, loadLivePath, saveLivePath } from '@/lib/live-path-storage';
 import { getSignedHeaders } from '@/lib/client-signing';
+import { withBasePath } from '@/lib/base-path';
 import { RunAiAnalysisPanel } from '@/components/RunAiAnalysisPanel';
 import type { RunRecord, LatLng, Stop } from '@/types';
 
@@ -94,7 +95,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
 
   const fetchRun = useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/runs/${runId}`);
+      const res = await fetch(withBasePath(`/api/v1/runs/${runId}`));
 
       if (!res.ok) {
         const cached = loadRunSnapshot(runId);
@@ -330,7 +331,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       try {
         const signedHeaders = await getSignedHeaders(body);
 
-        const res = await fetch(`/api/v1/runs/${runId}/stops/${stopId}`, {
+        const res = await fetch(withBasePath(`/api/v1/runs/${runId}/stops/${stopId}`), {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -399,7 +400,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
       <div className="text-center space-y-4 p-8">
         <p className="text-4xl">⚠️</p>
         <p className="font-mono" style={{ color: 'var(--accent-red)' }}>{error || 'Run not found'}</p>
-        <a href="/planner" className="btn-secondary">← Back to Planner</a>
+        <a href={withBasePath('/planner')} className="btn-secondary">← Back to Planner</a>
       </div>
     </div>
   );
@@ -638,7 +639,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                 <p className="text-3xl mb-2">🎉</p>
                 <h3 className="font-mono font-bold text-lg" style={{ color: 'var(--accent-green)' }}>All Deliveries Complete!</h3>
                 <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{run.stops.length} stops · {run.totalDistanceKm} km · {run.totalDurationMin} min</p>
-                <a href="/planner" className="btn-secondary mt-4 inline-block">← New Run</a>
+                <a href={withBasePath('/planner')} className="btn-secondary mt-4 inline-block">← New Run</a>
               </div>
             )}
           </div>
@@ -907,7 +908,7 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
             <p className="text-3xl mb-2">🎉</p>
             <h3 className="font-mono font-bold text-lg" style={{ color: 'var(--accent-green)' }}>All Deliveries Complete!</h3>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{run.stops.length} stops · {run.totalDistanceKm} km · {run.totalDurationMin} min</p>
-            <a href="/planner" className="btn-secondary mt-4 inline-block">← New Run</a>
+            <a href={withBasePath('/planner')} className="btn-secondary mt-4 inline-block">← New Run</a>
           </div>
         </div>
       )}
