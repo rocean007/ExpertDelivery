@@ -132,6 +132,60 @@ async function fetchNominatimSuggestions(
   }));
 }
 
+async function fetchOrsSuggestions(
+  query: string,
+  limit: number,
+  countryCodes?: string
+): Promise<GeocodeResult[]> {
+  const apiKey = process.env.ORS_API_KEY;
+  if (!apiKey) return [];
+
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    text: query,
+    size: String(Math.max(1, Math.min(10, Math.floor(limit)))),
+  });
+
+  if (countryCodes) {
+    // ORS accepts single ISO2 country code; for comma lists, use the first one.
+    const first = countryCodes.split(',')[0]?.trim();
+    if (first) params.set('boundary.country', first);
+  }
+
+  const response = await fetch(`https://api.openrouteservice.org/geocode/search?${params.toString()}`, {
+    headers: {
+      'Accept-Language': 'en',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenRouteService geocode returned ${response.status}`);
+  }
+
+  const result = (await response.json()) as {
+    features?: Array<{
+      geometry?: { coordinates?: [number, number] };
+      properties?: { label?: string; confidence?: number };
+    }>;
+  };
+
+  const features = Array.isArray(result.features) ? result.features : [];
+  return features
+    .map((f) => {
+      const coords = f.geometry?.coordinates;
+      if (!coords || coords.length < 2) return null;
+      const [lng, lat] = coords;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return {
+        lat,
+        lng,
+        displayName: f.properties?.label || `${lat},${lng}`,
+        importance: typeof f.properties?.confidence === 'number' ? f.properties.confidence : undefined,
+      } as GeocodeResult;
+    })
+    .filter((v): v is GeocodeResult => v !== null);
+}
+
 async function fetchReverseNominatim(
   lat: number,
   lng: number
@@ -206,9 +260,22 @@ export async function geocodeSuggestions(
 
   try {
     const cc = mergeCountryCodes(options?.countryCodes);
-    const results = await enqueueRequest(() =>
+    let results = await enqueueRequest(() =>
       fetchNominatimSuggestions(normalized, safeLimit, cc)
     );
+
+    // If country bias is too strict, retry globally before giving up.
+    if (results.length === 0 && cc) {
+      results = await enqueueRequest(() =>
+        fetchNominatimSuggestions(normalized, safeLimit)
+      );
+    }
+
+    // Last fallback: OpenRouteService geocoder when configured.
+    if (results.length === 0) {
+      results = await fetchOrsSuggestions(normalized, safeLimit, cc);
+    }
+
     await cacheSet(cacheKey, results, GEOCODE_TTL);
     return results;
   } catch (error) {
