@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
+import { withBasePath } from '@/lib/base-path';
 
 export const viewport: Viewport = {
   themeColor: '#182210',
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
   description: 'Optimized delivery route planning for Ocean Tarkari',
   keywords: ['delivery', 'route optimization', 'logistics'],
   robots: 'noindex, nofollow',
-  manifest: '/manifest.webmanifest',
+  manifest: withBasePath('/manifest.webmanifest'),
   appleWebApp: { capable: true, title: 'OT Delivery' },
 };
 

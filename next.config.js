@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 const nextConfig = {
   reactStrictMode: true,
+  basePath,
+  assetPrefix: basePath || undefined,
   images: {
     remotePatterns: [
       {
@@ -16,7 +20,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/api/v1/runs/:runId',
+        source: `${basePath}/api/v1/runs/:runId`,
         headers: [
           { key: 'Access-Control-Allow-Origin', value: process.env.ALLOWED_ORIGINS || '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, OPTIONS' },
@@ -24,7 +28,7 @@ const nextConfig = {
         ],
       },
       {
-        source: '/embed/:runId',
+        source: `${basePath}/embed/:runId`,
         headers: [
           { key: 'X-Frame-Options', value: 'ALLOWALL' },
           { key: 'Content-Security-Policy', value: "frame-ancestors *" },
@@ -35,7 +39,7 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: '/osrm-proxy/:path*',
+        source: `${basePath}/osrm-proxy/:path*`,
         destination: 'https://router.project-osrm.org/:path*',
       },
     ];
