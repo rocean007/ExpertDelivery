@@ -40,3 +40,15 @@ export function buildGoogleMapsDirectionsUrl(
   });
   return `https://www.google.com/maps/dir/?${p.toString()}`;
 }
+
+/**
+ * Opens a single coordinate in Google Maps (no API key).
+ */
+export function buildGoogleMapsLocationUrl(position: LatLng): string {
+  const p = new URLSearchParams({
+    api: '1',
+    query: fmt(position),
+  });
+
+  return `https://www.google.com/maps/search/?${p.toString()}`;
+}

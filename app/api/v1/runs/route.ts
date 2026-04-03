@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { geocodeTopResult } from '@/lib/geocode';
-import { buildGoogleMapsDirectionsUrl } from '@/lib/directions-url';
+import { buildGoogleMapsDirectionsUrl, buildGoogleMapsLocationUrl } from '@/lib/directions-url';
 import { getTripOptimization, getDistanceMatrix, getRoutePolyline, getRouteLegDetails } from '@/lib/osrm';
 import { optimizeTSP } from '@/lib/tsp';
 import { saveRun } from '@/lib/kv';
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
     label: body.depot.label,
     address: depotAddressResolved ?? body.depot.address,
     position: depotPosition,
+    googleMapsUrl: buildGoogleMapsLocationUrl(depotPosition),
     status: 'pending',
   };
 
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
       label: s.label,
       address: stopAddressResolved ?? s.address,
       position,
+      googleMapsUrl: buildGoogleMapsLocationUrl(position),
       orderId: s.orderId,
       notes: s.notes,
       status: 'pending',

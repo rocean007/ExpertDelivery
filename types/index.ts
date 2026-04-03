@@ -8,6 +8,8 @@ export interface Stop {
   label: string;
   address?: string;
   position: LatLng;
+  /** Direct Google Maps URL for this coordinate (no API key). */
+  googleMapsUrl?: string;
   orderId?: string;
   notes?: string;
   status: 'pending' | 'arrived' | 'delivered' | 'skipped';
