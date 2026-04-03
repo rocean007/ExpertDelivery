@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { geocodeAddress } from '@/lib/geocode';
+import { geocodeTopResult } from '@/lib/geocode';
+import { buildGoogleMapsDirectionsUrl } from '@/lib/directions-url';
 import { getTripOptimization, getDistanceMatrix, getRoutePolyline, getRouteLegDetails } from '@/lib/osrm';
 import { optimizeTSP } from '@/lib/tsp';
 import { saveRun } from '@/lib/kv';
@@ -38,12 +39,17 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
 
   const runId = body.runId || uuidv4();
 
-  // Resolve depot coordinates
+  // Resolve depot coordinates (same top hit as /geocode suggestions — Nominatim relevance order)
   let depotPosition: LatLng | null = null;
+  let depotAddressResolved: string | undefined;
   if (body.depot.lat !== undefined && body.depot.lng !== undefined) {
     depotPosition = { lat: body.depot.lat, lng: body.depot.lng };
   } else if (body.depot.address) {
-    depotPosition = await geocodeAddress(body.depot.address);
+    const hit = await geocodeTopResult(body.depot.address);
+    if (hit) {
+      depotPosition = { lat: hit.lat, lng: hit.lng };
+      depotAddressResolved = hit.displayName;
+    }
   }
 
   if (!depotPosition) {
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
   const depot: Stop = {
     id: 'depot',
     label: body.depot.label,
-    address: body.depot.address,
+    address: depotAddressResolved ?? body.depot.address,
     position: depotPosition,
     status: 'pending',
   };
@@ -63,10 +69,15 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
   for (const s of body.stops) {
     let position: LatLng | null = null;
 
+    let stopAddressResolved: string | undefined;
     if (s.lat !== undefined && s.lng !== undefined) {
       position = { lat: s.lat, lng: s.lng };
     } else if (s.address) {
-      position = await geocodeAddress(s.address);
+      const hit = await geocodeTopResult(s.address);
+      if (hit) {
+        position = { lat: hit.lat, lng: hit.lng };
+        stopAddressResolved = hit.displayName;
+      }
     }
 
     if (!position) {
@@ -76,7 +87,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
     resolvedStops.push({
       id: s.id,
       label: s.label,
-      address: s.address,
+      address: stopAddressResolved ?? s.address,
       position,
       orderId: s.orderId,
       notes: s.notes,
@@ -162,6 +173,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
   const totalDurationMin =
     legDurations.reduce((a, b) => a + b, 0) + orderedStops.length * HANDOFF_MINUTES;
 
+  const directionsUrl =
+    buildGoogleMapsDirectionsUrl(depot.position, orderedStops.map((s) => s.position)) ?? undefined;
+
   const run: RunRecord = {
     runId,
     createdAt: new Date().toISOString(),
@@ -170,6 +184,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<R
     polyline,
     totalDistanceKm: Math.round(totalDistanceKm * 100) / 100,
     totalDurationMin: Math.round(totalDurationMin),
+    directionsUrl,
     status: 'active',
     driverName: body.driverName,
     driverPhone: body.driverPhone,

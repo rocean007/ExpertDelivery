@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { geocodeSuggestions } from '@/lib/geocode';
+import { geocodeSuggestions, toGeocodeBestMatch } from '@/lib/geocode';
 import type { ApiResponse, GeocodeLookupResult } from '@/types';
 
 export const runtime = 'nodejs';
@@ -16,18 +16,18 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<Ge
   const { searchParams } = req.nextUrl;
   const q = searchParams.get('q');
   const limitParam = searchParams.get('limit');
-  const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 5;
-  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(8, parsedLimit)) : 5;
+  const country = searchParams.get('country')?.trim().toLowerCase() || undefined;
+  const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 8;
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(10, parsedLimit)) : 8;
 
-  if (!q || q.trim().length < 3) {
-    return failure('Query parameter "q" is required and must be at least 3 characters');
+  if (!q || q.trim().length < 2) {
+    return failure('Query parameter "q" is required and must be at least 2 characters');
   }
 
   try {
-    const suggestions = await geocodeSuggestions(q.trim(), limit);
-    const best = suggestions[0] ?? null;
+    const suggestions = await geocodeSuggestions(q.trim(), limit, country ? { countryCodes: country } : undefined);
     return success({
-      bestMatch: best ? { lat: best.lat, lng: best.lng } : null,
+      bestMatch: toGeocodeBestMatch(suggestions),
       suggestions,
     });
   } catch (err) {

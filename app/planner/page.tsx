@@ -42,6 +42,13 @@ function debounce<T extends (...args: Parameters<T>) => void>(fn: T, ms: number)
   };
 }
 
+function geocodeRequestUrl(query: string, limit = 8): string {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const country = process.env.NEXT_PUBLIC_NOMINATIM_COUNTRY_CODES?.trim().toLowerCase();
+  if (country) params.set('country', country);
+  return `/api/v1/geocode?${params.toString()}`;
+}
+
 export default function PlannerPage() {
   const [depotAddress, setDepotAddress] = useState('');
   const [depotPosition, setDepotPosition] = useState<LatLng | null>(null);
@@ -61,10 +68,10 @@ export default function PlannerPage() {
 
   const geocodeDebounced = useRef(
     debounce(async (query: string, onResult: (suggestions: GeocodeResult[], bestMatch: LatLng | null) => void, onLoading: (v: boolean) => void) => {
-      if (query.trim().length < 3) { onResult([], null); return; }
+      if (query.trim().length < 2) { onResult([], null); return; }
       onLoading(true);
       try {
-        const res = await fetch(`/api/v1/geocode?q=${encodeURIComponent(query)}&limit=5`);
+        const res = await fetch(geocodeRequestUrl(query));
         const json = await res.json() as { success: boolean; data?: GeocodeLookupResult };
         if (json.success && json.data) {
           onResult(json.data.suggestions, json.data.bestMatch);
@@ -105,7 +112,7 @@ export default function PlannerPage() {
         const updated = { ...s, [field]: val };
         if (field === 'address') {
           updated.error = '';
-          if (val.trim().length < 3) {
+          if (val.trim().length < 2) {
             updated.position = null;
             updated.suggestions = [];
             return updated;
@@ -114,7 +121,7 @@ export default function PlannerPage() {
             val,
             (suggestions, bestMatch) => setStops((p) => p.map((x) => {
               if (x.id !== id) return x;
-              const hasInput = val.trim().length >= 4;
+              const hasInput = val.trim().length >= 2;
               return {
                 ...x,
                 position: bestMatch,
@@ -413,12 +420,25 @@ export default function PlannerPage() {
                 </div>
               ))}
             </div>
-            <a
-              href={`/run/${run.runId}`}
-              className="btn-primary w-full py-3 text-sm flex items-center justify-center gap-2 no-underline"
-            >
-              🚀 Start Run
-            </a>
+            <div className="flex flex-col gap-2">
+              <a
+                href={`/run/${run.runId}`}
+                className="btn-primary w-full py-3 text-sm flex items-center justify-center gap-2 no-underline"
+              >
+                🚀 Start Run
+              </a>
+              {run.directionsUrl && (
+                <a
+                  href={run.directionsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary w-full py-2.5 text-xs font-mono uppercase tracking-wider text-center no-underline"
+                >
+                  Open optimized route in Google Maps
+                </a>
+              )}
+            </div>
+
           </div>
         )}
       </aside>

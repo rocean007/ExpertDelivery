@@ -332,16 +332,30 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
                   <p className="text-xs mt-1 italic" style={{ color: 'var(--accent-amber)' }}>📝 {currentStop.notes}</p>
                 )}
               </div>
-              <a
-                href={googleMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-shrink-0 px-3 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 no-underline"
-                style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid var(--border-default)', color: 'var(--accent-green)' }}
-                aria-label="Open in Google Maps"
-              >
-                🗺 Maps
-              </a>
+              <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1 no-underline"
+                  style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid var(--border-default)', color: 'var(--accent-green)' }}
+                  aria-label="Open in Google Maps to next stops"
+                >
+                  🗺 Next
+                </a>
+                {run.directionsUrl && (
+                  <a
+                    href={run.directionsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider no-underline"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                    aria-label="Open full optimized route in Google Maps"
+                  >
+                    Full route
+                  </a>
+                )}
+              </div>
             </div>
 
             {/* Action buttons */}
