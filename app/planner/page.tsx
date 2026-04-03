@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { RunAiAnalysisPanel } from '@/components/RunAiAnalysisPanel';
 import type { RunRecord, LatLng, GeocodeResult, GeocodeLookupResult } from '@/types';
 
 const PlannerMap = dynamic(() => import('@/components/PlannerMap'), {
@@ -209,11 +210,15 @@ export default function PlannerPage() {
   }, [depotAddress, depotPosition, stops, driverName, vehicleType]);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex h-[100dvh] overflow-hidden flex-col md:flex-row" style={{ background: 'var(--bg-primary)' }}>
       {/* Sidebar */}
       <aside
-        className={`flex flex-col border-r overflow-y-auto transition-all duration-300 ${sidebarOpen ? 'w-96' : 'w-0 overflow-hidden'}`}
-        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)', minWidth: sidebarOpen ? '384px' : '0' }}
+        className={`flex flex-col border-t md:border-t-0 md:border-r overflow-y-auto transition-all duration-300 ${
+          sidebarOpen
+            ? 'w-full md:w-96 shrink-0 max-md:max-h-[46vh] md:max-h-none'
+            : 'w-full md:w-0 md:min-w-0 max-md:max-h-0 overflow-hidden'
+        }`}
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}
         aria-label="Route planner"
       >
         <div className="p-5 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -427,6 +432,7 @@ export default function PlannerPage() {
               >
                 🚀 Start Run
               </a>
+              <RunAiAnalysisPanel run={run} />
               {run.directionsUrl && (
                 <a
                   href={run.directionsUrl}
@@ -443,10 +449,11 @@ export default function PlannerPage() {
         )}
       </aside>
 
-      {/* Toggle sidebar button */}
+      {/* Toggle sidebar — desktop edge tab */}
       <button
+        type="button"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-6 h-12 flex items-center justify-center rounded-r-lg transition-all"
+        className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-6 h-12 items-center justify-center rounded-r-lg transition-all"
         style={{
           background: 'var(--bg-card)',
           border: '1px solid var(--border-default)',
@@ -459,8 +466,23 @@ export default function PlannerPage() {
         {sidebarOpen ? '‹' : '›'}
       </button>
 
+      {/* Mobile FAB — switch between map and planner sheet */}
+      <button
+        type="button"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="md:hidden fixed bottom-4 right-4 z-30 px-4 py-2.5 rounded-xl text-xs font-mono font-bold uppercase tracking-widest shadow-lg touch-manipulation"
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-default)',
+          color: 'var(--accent-green)',
+        }}
+        aria-label={sidebarOpen ? 'Show map' : 'Open planner'}
+      >
+        {sidebarOpen ? 'Map' : 'Plan'}
+      </button>
+
       {/* Map */}
-      <main className="flex-1 relative">
+      <main className="flex-1 relative min-h-[54vh] md:min-h-0">
         <PlannerMap
           run={run}
           depotPosition={depotPosition}

@@ -14,7 +14,9 @@ import {
   pendingPatchesForRun,
   saveRunSnapshot,
 } from '@/lib/offline-run';
+import { clearLivePath, loadLivePath, saveLivePath } from '@/lib/live-path-storage';
 import { generateSignature } from '@/lib/signing';
+import { RunAiAnalysisPanel } from '@/components/RunAiAnalysisPanel';
 import type { RunRecord, LatLng, Stop } from '@/types';
 
 const DriverMap = dynamic(() => import('@/components/DriverMap'), {
@@ -53,6 +55,10 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
+  const [livePath, setLivePath] = useState<LatLng[]>([]);
+  const [recordLivePath, setRecordLivePath] = useState(false);
+  const [followGPS, setFollowGPS] = useState(false);
+  const lastGpsSampleRef = useRef<{ t: number; p: LatLng } | null>(null);
 
   const prevDistancesRef = useRef<Map<string, number>>(new Map());
   const alertCooldownRef = useRef<Map<string, number>>(new Map());
@@ -158,6 +164,39 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
     flushStopPatchQueue()
       .catch(() => {})
       .finally(() => setPendingSync(pendingPatchesForRun(runId)));
+  }, [runId]);
+
+  useEffect(() => {
+    setLivePath(loadLivePath(runId));
+    lastGpsSampleRef.current = null;
+  }, [runId]);
+
+  useEffect(() => {
+    if (!recordLivePath || !driverPosition) return;
+    const t = Date.now();
+    const last = lastGpsSampleRef.current;
+    if (last) {
+      const dt = t - last.t;
+      const d = calculateDistance(
+        last.p.lat,
+        last.p.lng,
+        driverPosition.lat,
+        driverPosition.lng
+      );
+      if (dt < 2600 && d < 12) return;
+    }
+    lastGpsSampleRef.current = { t, p: driverPosition };
+    setLivePath((prev) => {
+      const next = [...prev, driverPosition];
+      saveLivePath(runId, next);
+      return next;
+    });
+  }, [driverPosition, recordLivePath, runId]);
+
+  const clearGpsTrail = useCallback(() => {
+    clearLivePath(runId);
+    setLivePath([]);
+    lastGpsSampleRef.current = null;
   }, [runId]);
 
   useEffect(() => {
@@ -387,14 +426,20 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
     : '#';
 
   return (
-    <div className="relative w-full h-screen overflow-hidden">
+    <div className="relative w-full min-h-[100dvh] h-[100dvh] overflow-hidden">
       {/* Map - full screen */}
       <div className="absolute inset-0">
-        <DriverMap run={run} driverPosition={driverPosition} currentStopIndex={currentStopIndex} />
+        <DriverMap
+          run={run}
+          driverPosition={driverPosition}
+          currentStopIndex={currentStopIndex}
+          livePath={livePath}
+          followDriver={followGPS}
+        />
       </div>
 
       {/* Top HUD */}
-      <div className="absolute top-0 left-0 right-0 z-20 p-3 flex flex-col gap-2">
+      <div className="absolute top-0 left-0 right-0 z-20 p-2 sm:p-3 flex flex-col gap-2 max-w-[100vw]">
         {(!isOnline || loadedFromSnapshot || pendingSync > 0) && (
           <div
             className="rounded-xl px-3 py-2 text-xs font-mono leading-snug"
@@ -420,40 +465,86 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
             )}
           </div>
         )}
-        <div className="flex items-center gap-3 w-full">
-        <div className="flex-1 rounded-xl px-4 py-2 flex items-center gap-4" style={{ background: 'rgba(10,15,13,0.92)', border: '1px solid var(--border-default)', backdropFilter: 'blur(12px)' }}>
-          <div className="font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--accent-green)' }}>
-            {run.driverName || 'Driver'}
+        <div className="flex flex-wrap items-stretch gap-2 w-full">
+          <div className="flex-1 min-w-[12rem] rounded-xl px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-4" style={{ background: 'rgba(10,15,13,0.92)', border: '1px solid var(--border-default)', backdropFilter: 'blur(12px)' }}>
+            <div className="font-mono text-[10px] sm:text-xs uppercase tracking-widest truncate max-w-[5rem] sm:max-w-none" style={{ color: 'var(--accent-green)' }}>
+              {run.driverName || 'Driver'}
+            </div>
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden min-w-[4rem]" style={{ background: 'var(--bg-elevated)' }}>
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: 'var(--accent-green)' }} />
+            </div>
+            <div className="text-[10px] sm:text-xs font-mono shrink-0" style={{ color: 'var(--text-secondary)' }}>
+              {completedCount}/{run.stops.length}
+            </div>
           </div>
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: 'var(--accent-green)' }} />
-          </div>
-          <div className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-            {completedCount}/{run.stops.length}
+          <div className="flex flex-wrap gap-1.5 items-center justify-end flex-1 min-w-0 sm:flex-none sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setRecordLivePath((v) => !v)}
+              className="rounded-lg px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wide border transition-colors touch-manipulation"
+              style={{
+                background: recordLivePath ? 'rgba(56,189,248,0.2)' : 'rgba(10,15,13,0.92)',
+                borderColor: recordLivePath ? 'rgba(56,189,248,0.5)' : 'var(--border-default)',
+                color: recordLivePath ? '#38bdf8' : 'var(--text-secondary)',
+              }}
+              title="Append GPS fixes to the cyan trail (stored on device)"
+            >
+              {recordLivePath ? '● GPS' : '○ GPS'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFollowGPS((v) => !v)}
+              disabled={!driverPosition}
+              className="rounded-lg px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wide border transition-colors touch-manipulation disabled:opacity-40"
+              style={{
+                background: followGPS ? 'rgba(74,222,128,0.15)' : 'rgba(10,15,13,0.92)',
+                borderColor: 'var(--border-default)',
+                color: 'var(--text-secondary)',
+              }}
+              title="Pan map toward your position periodically"
+            >
+              Follow
+            </button>
+            <button
+              type="button"
+              onClick={() => clearGpsTrail()}
+              className="rounded-lg px-2 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wide border touch-manipulation"
+              style={{ background: 'rgba(10,15,13,0.92)', borderColor: 'var(--border-default)', color: 'var(--text-muted)' }}
+              title="Clear recorded GPS trail for this run"
+            >
+              Clear trail
+            </button>
+            <RunAiAnalysisPanel run={run} compact />
+            <button
+              type="button"
+              onClick={enableVoice}
+              className={`rounded-xl p-2 sm:p-2.5 transition-all touch-manipulation shrink-0 ${voiceEnabled ? 'opacity-100' : 'opacity-60'}`}
+              style={{ background: voiceEnabled ? 'rgba(74,222,128,0.2)' : 'rgba(10,15,13,0.92)', border: `1px solid ${voiceEnabled ? 'var(--accent-green)' : 'var(--border-default)'}`, backdropFilter: 'blur(12px)' }}
+              aria-label={voiceEnabled ? 'Voice enabled' : 'Enable voice alerts'}
+              title={voiceEnabled ? 'Voice alerts on' : 'Enable voice alerts'}
+            >
+              🔊
+            </button>
           </div>
         </div>
-        <button
-          onClick={enableVoice}
-          className={`rounded-xl p-2.5 transition-all ${voiceEnabled ? 'opacity-100' : 'opacity-60'}`}
-          style={{ background: voiceEnabled ? 'rgba(74,222,128,0.2)' : 'rgba(10,15,13,0.92)', border: `1px solid ${voiceEnabled ? 'var(--accent-green)' : 'var(--border-default)'}`, backdropFilter: 'blur(12px)' }}
-          aria-label={voiceEnabled ? 'Voice enabled' : 'Enable voice alerts'}
-          title={voiceEnabled ? 'Voice alerts on' : 'Enable voice alerts'}
-        >
-          🔊
-        </button>
-        </div>
+        <p className="text-[10px] font-mono px-1" style={{ color: 'var(--text-muted)' }}>
+          Green dashed = planned (OSRM). Cyan = your recorded GPS when ● is on.
+        </p>
       </div>
 
       {/* Notification toast */}
       {notification && (
-        <div className="absolute top-16 left-4 right-4 z-30 rounded-xl px-4 py-3 text-sm font-mono animate-slide-up"
+        <div className="absolute top-28 sm:top-24 left-3 right-3 sm:left-4 sm:right-4 z-30 rounded-xl px-4 py-3 text-sm font-mono animate-slide-up"
           style={{ background: 'rgba(74,222,128,0.15)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', backdropFilter: 'blur(12px)' }}>
           🔔 {notification}
         </div>
       )}
 
       {/* Stop list panel */}
-      <div className="absolute right-3 top-20 bottom-52 z-20 w-72 overflow-y-auto rounded-xl" style={{ background: 'rgba(10,15,13,0.9)', border: '1px solid var(--border-default)', backdropFilter: 'blur(12px)' }}>
+      <div
+        className="absolute z-20 overflow-y-auto rounded-xl left-2 right-2 top-14 max-h-[22vh] w-auto md:left-auto md:right-3 md:top-20 md:bottom-52 md:max-h-none md:w-72 bottom-48"
+        style={{ background: 'rgba(10,15,13,0.9)', border: '1px solid var(--border-default)', backdropFilter: 'blur(12px)' }}
+      >
         <div className="p-3 border-b text-xs font-mono uppercase tracking-widest" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}>
           Route Stops
         </div>
@@ -488,8 +579,8 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
 
       {/* Bottom card - current stop */}
       {currentStop && run.status !== 'completed' && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 p-3">
-          <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(10,15,13,0.95)', border: '1px solid var(--border-strong)', backdropFilter: 'blur(16px)' }}>
+        <div className="absolute bottom-0 left-0 right-0 z-20 p-2 sm:p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="rounded-2xl p-3 sm:p-4 space-y-3 max-w-[100vw] overflow-x-hidden" style={{ background: 'rgba(10,15,13,0.95)', border: '1px solid var(--border-strong)', backdropFilter: 'blur(16px)' }}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-mono uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>
@@ -576,8 +667,8 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
 
       {/* Completed state */}
       {run.status === 'completed' && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 p-3">
-          <div className="rounded-2xl p-6 text-center" style={{ background: 'rgba(10,15,13,0.95)', border: '1px solid var(--accent-green)', backdropFilter: 'blur(16px)' }}>
+        <div className="absolute bottom-0 left-0 right-0 z-20 p-2 sm:p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="rounded-2xl p-5 sm:p-6 text-center" style={{ background: 'rgba(10,15,13,0.95)', border: '1px solid var(--accent-green)', backdropFilter: 'blur(16px)' }}>
             <p className="text-3xl mb-2">🎉</p>
             <h3 className="font-mono font-bold text-lg" style={{ color: 'var(--accent-green)' }}>All Deliveries Complete!</h3>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{run.stops.length} stops · {run.totalDistanceKm} km · {run.totalDurationMin} min</p>

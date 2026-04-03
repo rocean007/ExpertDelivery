@@ -53,15 +53,48 @@ function PanToDriver({ position }: { position: LatLng | null }) {
   return null;
 }
 
+/** Keeps map centered on GPS while live follow is enabled (lightweight pan, no zoom jump). */
+function FollowDriverLive({
+  position,
+  enabled,
+}: {
+  position: LatLng | null;
+  enabled: boolean;
+}) {
+  const map = useMap();
+  const lastPan = useRef(0);
+
+  useEffect(() => {
+    if (!enabled || !position) return;
+    const now = Date.now();
+    if (now - lastPan.current < 2500) return;
+    lastPan.current = now;
+    map.panTo([position.lat, position.lng], { animate: true });
+  }, [position, enabled, map]);
+
+  return null;
+}
+
 interface Props {
   run: RunRecord;
   driverPosition: LatLng | null;
   currentStopIndex: number;
+  /** Raw GPS samples while recording (device path, not OSRM). */
+  livePath?: LatLng[];
+  /** Pan map toward the driver on an interval while delivering. */
+  followDriver?: boolean;
 }
 
-export default function DriverMap({ run, driverPosition, currentStopIndex }: Props) {
+export default function DriverMap({
+  run,
+  driverPosition,
+  currentStopIndex,
+  livePath = [],
+  followDriver = false,
+}: Props) {
   const routeCoords = decodePolyline(run.polyline);
   const polylinePositions = routeCoords.map((c): [number, number] => [c.lat, c.lng]);
+  const livePositions = livePath.map((c): [number, number] => [c.lat, c.lng]);
 
   const defaultCenter: [number, number] = driverPosition
     ? [driverPosition.lat, driverPosition.lng]
@@ -80,6 +113,7 @@ export default function DriverMap({ run, driverPosition, currentStopIndex }: Pro
       />
 
       <PanToDriver position={driverPosition} />
+      <FollowDriverLive position={driverPosition} enabled={followDriver} />
 
       {/* Driver position */}
       {driverPosition && (
@@ -93,6 +127,14 @@ export default function DriverMap({ run, driverPosition, currentStopIndex }: Pro
             pathOptions={{ color: '#4ade80', fillColor: '#4ade80', fillOpacity: 0.05, weight: 1, dashArray: '4,4' }}
           />
         </>
+      )}
+
+      {/* Live GPS trail (actual device path) */}
+      {livePositions.length > 1 && (
+        <Polyline
+          positions={livePositions}
+          pathOptions={{ color: '#38bdf8', weight: 3, opacity: 0.9 }}
+        />
       )}
 
       {/* Route polyline */}
