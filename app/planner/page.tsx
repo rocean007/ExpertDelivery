@@ -223,7 +223,7 @@ export default function PlannerPage() {
     <div className="flex h-[100dvh] overflow-hidden flex-col md:flex-row" style={{ background: 'var(--bg-primary)' }}>
       {/* Sidebar */}
       <aside
-        className={`flex flex-col border-t md:border-t-0 md:border-r overflow-y-auto transition-all duration-300 ${
+        className={`flex flex-col border-t md:border-t-0 md:border-r overflow-hidden transition-all duration-300 ${
           sidebarOpen
             ? 'w-full md:w-96 shrink-0 max-md:max-h-[46vh] md:max-h-none'
             : 'w-full md:w-0 md:min-w-0 max-md:max-h-0 overflow-hidden'
@@ -294,11 +294,7 @@ export default function PlannerPage() {
                         key={`${suggestion.lat}-${suggestion.lng}-${idx}`}
                         type="button"
                         role="option"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          selectDepotSuggestion(suggestion);
-                        }}
-                        onTouchEnd={(e) => {
+                        onPointerDown={(e) => {
                           e.preventDefault();
                           selectDepotSuggestion(suggestion);
                         }}
@@ -387,11 +383,7 @@ export default function PlannerPage() {
                           <button
                             key={`${suggestion.lat}-${suggestion.lng}-${suggestionIdx}`}
                             type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              selectStopSuggestion(stop.id, suggestion);
-                            }}
-                            onTouchEnd={(e) => {
+                            onPointerDown={(e) => {
                               e.preventDefault();
                               selectStopSuggestion(stop.id, suggestion);
                             }}
