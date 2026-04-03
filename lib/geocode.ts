@@ -5,7 +5,7 @@ const GEOCODE_TTL = 86400; // 24 hours
 const RATE_LIMIT_MS = 1000; // 1 request per second
 
 let lastRequestTime = 0;
-let requestQueue: Array<() => void> = [];
+const requestQueue: Array<() => void> = [];
 let isProcessingQueue = false;
 
 function normalizeQuery(query: string): string {

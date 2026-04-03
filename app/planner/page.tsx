@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import type { RunRecord, LatLng } from '@/types';
 
@@ -136,7 +136,7 @@ export default function PlannerPage() {
         headers: {
           'Content-Type': 'application/json',
           'x-timestamp': timestamp,
-          'x-signature': await computeHmac(body, timestamp),
+          'x-signature': await computeHmac(body),
         },
         body,
       });
@@ -364,7 +364,7 @@ export default function PlannerPage() {
   );
 }
 
-async function computeHmac(body: string, timestamp: string): Promise<string> {
+async function computeHmac(body: string): Promise<string> {
   const secret = process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
