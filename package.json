@@ -10,12 +10,12 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@vercel/kv": "^1.0.1",
     "leaflet": "^1.9.4",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0",
+    "redis": "^5.8.2",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

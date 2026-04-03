@@ -4,7 +4,7 @@ Plan deliveries on a map, optimize visit order with **OSRM** (open routing), the
 
 ## How it works
 
-1. **Planner (`/planner`)** — Set a depot and stops (addresses geocode via **Nominatim**). Click **Optimize** to create a run: the server orders stops, stores the route in **Vercel KV**, and returns ETAs plus optional **Google Maps directions** link.
+1. **Planner (`/planner`)** — Set a depot and stops (addresses geocode via **Nominatim**). Click **Optimize** to create a run: the server orders stops, stores the route in **Redis**, and returns ETAs plus optional **Google Maps directions** link.
 2. **Driver (`/run/:id`)** — Full-screen map with the planned polyline (green, dashed), your position, and stop status buttons. Turn on **● GPS** to record a **cyan** trail of real GPS fixes (saved on the device). **Route insight** builds a text prompt you can paste into any external chat — no AI API keys in this app.
 3. **Embed (`/embed/:id`)** — Lightweight status card for iframes.
 
@@ -12,7 +12,7 @@ Data sources: OpenStreetMap tiles, OSRM public demo, Nominatim (please respect r
 
 ## Docs
 
-- **[PRODUCTION.md](./PRODUCTION.md)** — What you need to configure to ship (env vars, KV, HMAC, optional voice).
+- **[PRODUCTION.md](./PRODUCTION.md)** — What you need to configure to ship (env vars, Redis, HMAC, optional voice).
 
 ## Local run
 

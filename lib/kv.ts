@@ -1,15 +1,48 @@
-import { kv } from '@vercel/kv';
+import { createClient, type RedisClientType } from 'redis';
 import type { RunRecord, Stop } from '@/types';
 
 const RUN_TTL_SECONDS = 86400; // 24 hours
 const ARCHIVE_TTL_SECONDS = 172800; // 48 hours
 
+let redisClient: RedisClientType | null = null;
+let redisConnectPromise: Promise<RedisClientType> | null = null;
+
+async function getRedis(): Promise<RedisClientType> {
+  if (redisClient?.isOpen) {
+    return redisClient;
+  }
+
+  if (redisConnectPromise) {
+    return redisConnectPromise;
+  }
+
+  const url = process.env.REDIS_URL;
+  if (!url) {
+    throw new Error('REDIS_URL is not configured');
+  }
+
+  const client = createClient({ url });
+  client.on('error', (error) => {
+    console.error('[Redis] client error:', error);
+  });
+
+  redisConnectPromise = client.connect().then(() => {
+    redisClient = client;
+    return client;
+  }).finally(() => {
+    redisConnectPromise = null;
+  });
+
+  return redisConnectPromise;
+}
+
 export async function getRun(runId: string): Promise<RunRecord | null> {
   try {
-    const data = await kv.get<RunRecord>(`run:${runId}`);
-    return data ?? null;
+    const redis = await getRedis();
+    const data = await redis.get(`run:${runId}`);
+    return data ? (JSON.parse(data) as RunRecord) : null;
   } catch (error) {
-    console.error('[KV] getRun error:', error);
+    console.error('[Redis] getRun error:', error);
     return null;
   }
 }
@@ -19,10 +52,11 @@ export async function saveRun(
   ttlSeconds: number = RUN_TTL_SECONDS
 ): Promise<void> {
   try {
-    await kv.set(`run:${run.runId}`, run, { ex: ttlSeconds });
+    const redis = await getRedis();
+    await redis.set(`run:${run.runId}`, JSON.stringify(run), { EX: ttlSeconds });
   } catch (error) {
-    console.error('[KV] saveRun error:', error);
-    throw new Error('Failed to save run to KV store');
+    console.error('[Redis] saveRun error:', error);
+    throw new Error('Failed to save run to Redis store');
   }
 }
 
@@ -81,10 +115,11 @@ export async function archiveRun(runId: string): Promise<RunRecord> {
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
   try {
-    const data = await kv.get<T>(key);
-    return data ?? null;
+    const redis = await getRedis();
+    const data = await redis.get(key);
+    return data ? (JSON.parse(data) as T) : null;
   } catch (error) {
-    console.error('[KV] cacheGet error:', key, error);
+    console.error('[Redis] cacheGet error:', key, error);
     return null;
   }
 }
@@ -95,8 +130,9 @@ export async function cacheSet<T>(
   ttlSeconds: number
 ): Promise<void> {
   try {
-    await kv.set(key, value, { ex: ttlSeconds });
+    const redis = await getRedis();
+    await redis.set(key, JSON.stringify(value), { EX: ttlSeconds });
   } catch (error) {
-    console.error('[KV] cacheSet error:', key, error);
+    console.error('[Redis] cacheSet error:', key, error);
   }
 }
