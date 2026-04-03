@@ -10,7 +10,7 @@ Everything below is **your responsibility** on the host (e.g. Vercel). This app 
 | **Vercel KV** (or compatible Redis REST) | Stores runs, geocode/OSRM caches |
 | `KV_REST_API_URL` | From Vercel Storage → KV |
 | `KV_REST_API_TOKEN` | Same |
-| `HMAC_SECRET` | Strong random string; server validates signed `POST` / `PATCH` / `DELETE` on `/api/v1/runs` and voice |
+| `HMAC_SECRET` | **Required in production.** Strong random string; must match what you use to sign requests (see `NEXT_PUBLIC_HMAC_SECRET` for browser-signed flows). In `next dev` only, the middleware falls back to `NEXT_PUBLIC_HMAC_SECRET` or `dev-secret` if unset so Optimize works without a filled `.env.local`. |
 | `ALLOWED_ORIGINS` | Comma-separated origins for CORS (e.g. `https://yourdomain.com`) |
 
 ## Optional
