@@ -286,7 +286,6 @@ export default function RunPage({ params }: { params: Promise<{ runId: string }>
               className={`rounded-lg p-2 transition-all cursor-pointer ${idx === currentStopIndex ? 'ring-1' : ''}`}
               style={{
                 background: idx === currentStopIndex ? 'rgba(74,222,128,0.1)' : 'var(--bg-card)',
-                ringColor: 'var(--accent-green)',
                 border: idx === currentStopIndex ? '1px solid var(--accent-green)' : '1px solid transparent',
               }}
               onClick={() => setCurrentStopIndex(idx)}
