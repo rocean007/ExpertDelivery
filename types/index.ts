@@ -120,6 +120,10 @@ export interface GeocodeResult {
   lat: number;
   lng: number;
   displayName?: string;
+  /** Place-title style text (e.g. POI or street) for dropdown UX. */
+  primaryText?: string;
+  /** Context line (city, state, country) for dropdown UX. */
+  secondaryText?: string;
   /** Nominatim importance; higher is typically a better global match. */
   importance?: number;
 }

@@ -52,6 +52,21 @@ function geocodeRequestUrl(query: string, limit = 8): string {
   return withBasePath(`/api/v1/geocode?${params.toString()}`);
 }
 
+function suggestionPrimaryText(suggestion: GeocodeResult): string {
+  if (suggestion.primaryText && suggestion.primaryText.trim()) return suggestion.primaryText;
+  if (suggestion.displayName && suggestion.displayName.trim()) {
+    return suggestion.displayName.split(',')[0]?.trim() || suggestion.displayName;
+  }
+  return `${suggestion.lat.toFixed(6)}, ${suggestion.lng.toFixed(6)}`;
+}
+
+function suggestionSecondaryText(suggestion: GeocodeResult): string | undefined {
+  if (suggestion.secondaryText && suggestion.secondaryText.trim()) return suggestion.secondaryText;
+  if (!suggestion.displayName) return undefined;
+  const parts = suggestion.displayName.split(',').map((p) => p.trim()).filter(Boolean);
+  return parts.slice(1).join(', ') || undefined;
+}
+
 export default function PlannerPage() {
   const [depotAddress, setDepotAddress] = useState('');
   const [depotPosition, setDepotPosition] = useState<LatLng | null>(null);
@@ -112,7 +127,7 @@ export default function PlannerPage() {
       clearTimeout(depotBlurTimerRef.current);
       depotBlurTimerRef.current = null;
     }
-    setDepotAddress(suggestion.displayName || `${suggestion.lat.toFixed(6)}, ${suggestion.lng.toFixed(6)}`);
+    setDepotAddress(suggestion.displayName || suggestionPrimaryText(suggestion));
     setDepotPosition({ lat: suggestion.lat, lng: suggestion.lng });
     setDepotSuggestions([]);
     setDepotHasFocus(false);
@@ -163,7 +178,7 @@ export default function PlannerPage() {
       if (s.id !== id) return s;
       return {
         ...s,
-        address: suggestion.displayName || `${suggestion.lat.toFixed(6)}, ${suggestion.lng.toFixed(6)}`,
+        address: suggestion.displayName || suggestionPrimaryText(suggestion),
         position: { lat: suggestion.lat, lng: suggestion.lng },
         suggestions: [],
         error: '',
@@ -305,7 +320,12 @@ export default function PlannerPage() {
                         className="w-full text-left px-3 py-2.5 text-xs transition-colors touch-manipulation active:opacity-90"
                         style={{ color: 'var(--text-primary)', borderBottom: idx === depotSuggestions.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}
                       >
-                        {suggestion.displayName}
+                        <span className="block text-sm font-medium leading-snug">{suggestionPrimaryText(suggestion)}</span>
+                        {suggestionSecondaryText(suggestion) ? (
+                          <span className="block text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
+                            {suggestionSecondaryText(suggestion)}
+                          </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>
@@ -394,7 +414,12 @@ export default function PlannerPage() {
                             className="w-full text-left px-3 py-2.5 text-xs transition-colors touch-manipulation active:opacity-90"
                             style={{ color: 'var(--text-primary)', borderBottom: suggestionIdx === stop.suggestions.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}
                           >
-                            {suggestion.displayName}
+                            <span className="block text-sm font-medium leading-snug">{suggestionPrimaryText(suggestion)}</span>
+                            {suggestionSecondaryText(suggestion) ? (
+                              <span className="block text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
+                                {suggestionSecondaryText(suggestion)}
+                              </span>
+                            ) : null}
                           </button>
                         ))}
                       </div>

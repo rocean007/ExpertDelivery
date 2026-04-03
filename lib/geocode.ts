@@ -74,12 +74,90 @@ function firstAddressSegment(value: string): string {
   return i >= 0 ? value.slice(0, i).trim() : value.trim();
 }
 
+function splitDisplayName(value?: string): { primaryText?: string; secondaryText?: string } {
+  if (!value) return {};
+  const parts = value.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return {};
+  return {
+    primaryText: parts[0],
+    secondaryText: parts.slice(1).join(', ') || undefined,
+  };
+}
+
+function uniqueParts(parts: Array<string | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    if (!p) continue;
+    const trimmed = p.trim();
+    if (!trimmed) continue;
+    const key = normalizeText(trimmed);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function buildNominatimPrimaryAndSecondary(raw: {
+  display_name?: string;
+  address?: Record<string, string | undefined>;
+  namedetails?: Record<string, string | undefined>;
+}): { primaryText?: string; secondaryText?: string } {
+  const address = raw.address || {};
+  const namedetails = raw.namedetails || {};
+
+  const poiLike = uniqueParts([
+    namedetails.name,
+    address.amenity,
+    address.shop,
+    address.office,
+    address.tourism,
+    address.leisure,
+    address.building,
+    address.house_name,
+  ]);
+
+  const roadLike = uniqueParts([
+    address.road,
+    address.pedestrian,
+    address.cycleway,
+    address.footway,
+    address.path,
+  ]);
+
+  const locality = uniqueParts([
+    address.suburb,
+    address.neighbourhood,
+    address.city_district,
+    address.city,
+    address.town,
+    address.village,
+    address.municipality,
+    address.county,
+    address.state_district,
+    address.state,
+    address.country,
+  ]);
+
+  const primaryText = poiLike[0] || roadLike[0] || locality[0] || splitDisplayName(raw.display_name).primaryText;
+  const secondaryText = uniqueParts([
+    ...locality,
+    ...(roadLike[0] && roadLike[0] !== primaryText ? [roadLike[0]] : []),
+  ])
+    .filter((v) => normalizeText(v) !== normalizeText(primaryText || ''))
+    .slice(0, 4)
+    .join(', ') || splitDisplayName(raw.display_name).secondaryText;
+
+  return { primaryText, secondaryText };
+}
+
 function dedupeByNameAndApproxPosition(results: GeocodeResult[]): GeocodeResult[] {
   const seen = new Set<string>();
   const deduped: GeocodeResult[] = [];
 
   for (const item of results) {
-    const name = normalizeText(item.displayName || '');
+    const name = normalizeText(item.primaryText || item.displayName || '');
     const key = `${name}:${item.lat.toFixed(5)}:${item.lng.toFixed(5)}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -99,9 +177,13 @@ function rankGeocodeResults(query: string, results: GeocodeResult[], countryCode
     .filter(Boolean);
 
   const scored = results.map((item) => {
-    const name = item.displayName || '';
-    const n = normalizeText(name);
-    const nTokens = tokenize(name);
+    const primary = item.primaryText || '';
+    const secondary = item.secondaryText || '';
+    const full = item.displayName || [primary, secondary].filter(Boolean).join(', ');
+    const n = normalizeText(full);
+    const nTokens = tokenize(full);
+    const nPrimary = normalizeText(primary || full);
+    const primaryTokens = tokenize(primary || full);
 
     let score = 0;
 
@@ -109,17 +191,19 @@ function rankGeocodeResults(query: string, results: GeocodeResult[], countryCode
     score += (item.importance ?? 0) * 6;
 
     // Strong signal for exact and prefix matches.
-    if (n === q) score += 12;
-    if (n.startsWith(q)) score += 7;
+    if (nPrimary === q || n === q) score += 12;
+    if (nPrimary.startsWith(q) || n.startsWith(q)) score += 7;
     if (q.length >= 5 && n.includes(q)) score += 3;
 
     // Reward how many query tokens are represented.
     const tokenMatches = qTokens.filter((t) => nTokens.some((nt) => nt === t || nt.startsWith(t))).length;
+    const primaryTokenMatches = qTokens.filter((t) => primaryTokens.some((nt) => nt === t || nt.startsWith(t))).length;
     const coverage = qTokens.length > 0 ? tokenMatches / qTokens.length : 0;
     score += coverage * 8;
+    score += (qTokens.length > 0 ? primaryTokenMatches / qTokens.length : 0) * 4;
 
     // Query's first token usually carries the place identity.
-    if (firstToken && nTokens.some((t) => t === firstToken || t.startsWith(firstToken))) {
+    if (firstToken && (primaryTokens.some((t) => t === firstToken || t.startsWith(firstToken)) || nTokens.some((t) => t === firstToken || t.startsWith(firstToken)))) {
       score += 2.5;
     }
 
@@ -210,6 +294,8 @@ async function fetchNominatimSuggestions(
     lon: string;
     display_name: string;
     importance?: number;
+    address?: Record<string, string | undefined>;
+    namedetails?: Record<string, string | undefined>;
   }>;
 
   if (!results || results.length === 0) return [];
@@ -217,6 +303,7 @@ async function fetchNominatimSuggestions(
   const mapped = results.map((item) => ({
     lat: parseFloat(item.lat),
     lng: parseFloat(item.lon),
+    ...buildNominatimPrimaryAndSecondary(item),
     displayName: item.display_name,
     importance: typeof item.importance === 'number' ? item.importance : undefined,
   }));
@@ -272,6 +359,7 @@ async function fetchOrsSuggestions(
       return {
         lat,
         lng,
+        ...splitDisplayName(f.properties?.label),
         displayName: f.properties?.label || `${lat},${lng}`,
         importance: typeof f.properties?.confidence === 'number' ? f.properties.confidence : undefined,
       } as GeocodeResult;
@@ -323,6 +411,8 @@ async function fetchPhotonSuggestions(
       return {
         lat,
         lng,
+        primaryText: p?.name || p?.street || p?.city,
+        secondaryText: uniqueParts([p?.street, p?.city, p?.state, p?.country]).slice(0, 4).join(', ') || undefined,
         displayName: parts.length > 0 ? parts.join(', ') : `${lat},${lng}`,
       } as GeocodeResult;
     })
