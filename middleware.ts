@@ -15,16 +15,16 @@ function isProtectedPath(pathname: string): boolean {
 }
 
 /**
- * Server must verify HMAC with the same secret the client used to sign the body.
- * In production, set `HMAC_SECRET` explicitly. In `next dev` only, we fall back so
- * local runs work when `.env.local` is not yet filled (matches planner `NEXT_PUBLIC_HMAC_SECRET` default).
+ * Server must verify HMAC with the same secret used by the signing endpoint.
+ * In production, set `HMAC_SECRET` explicitly.
+ * In development only, we allow a fallback so local runs still work before env setup.
  */
 function resolveHmacSecret(): string | undefined {
   if (process.env.HMAC_SECRET) {
     return process.env.HMAC_SECRET;
   }
   if (process.env.NODE_ENV === 'development') {
-    return process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
+    return 'dev-secret';
   }
   return undefined;
 }
