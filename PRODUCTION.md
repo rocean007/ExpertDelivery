@@ -1,6 +1,6 @@
 # Production checklist
 
-Everything below is **your responsibility** on the host (e.g. Vercel). This app avoids paid **AI** APIs: “route insight” only copies a prompt to your clipboard and links to public chat sites.
+Everything below is **your responsibility** on the host (e.g. Vercel). This app avoids paid **AI** API keys: “Route AI” calls no-key AI endpoints directly, then merges model outputs into one concise answer.
 
 ## Required
 
@@ -40,7 +40,7 @@ Everything below is **your responsibility** on the host (e.g. Vercel). This app 
 
 - **OSRM** public instance is rate-limited; heavy fleets should self-host or use a paid router.  
 - **Nominatim**: **1 request/second** per app; this codebase queues and caches.  
-- **AI links** in the UI are plain HTTPS homepages, alphabetical, no affiliates. Limits are defined by each provider.
+- **No-key AI APIs** can change limits, latency, or model availability without notice. Keep manual chat links as fallback in case a provider is down.
 
 ## PWA / offline
 

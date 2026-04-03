@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { buildRunAnalysisPrompt } from '@/lib/run-analysis-prompt';
+import { withBasePath } from '@/lib/base-path';
 import { FREE_AI_CHAT_LINKS } from '@/lib/free-ai-chat-links';
 import type { RunRecord } from '@/types';
 
@@ -12,9 +13,33 @@ interface Props {
   compact?: boolean;
 }
 
+interface AiModelAnswer {
+  model: string;
+  label: string;
+  ok: boolean;
+  answer?: string;
+  error?: string;
+  latencyMs: number;
+}
+
+interface AiAggregateResult {
+  answer: string;
+  promptPreview: string;
+  modelAnswers: AiModelAnswer[];
+}
+
+interface AiApiResponse {
+  success: boolean;
+  data?: AiAggregateResult;
+  error?: string;
+}
+
 export function RunAiAnalysisPanel({ run, compact }: Props) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [aiResult, setAiResult] = useState<AiAggregateResult | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const textareaId = useId();
   const promptText = buildRunAnalysisPrompt(run);
@@ -60,6 +85,34 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
     }
   }, [promptText, textareaId]);
 
+  const runAi = useCallback(async () => {
+    setIsRunning(true);
+    setRunError(null);
+
+    try {
+      const res = await fetch(withBasePath('/api/v1/ai'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: promptText }),
+      });
+
+      const json = (await res.json().catch(() => ({}))) as AiApiResponse;
+
+      if (!res.ok || !json.success || !json.data) {
+        setRunError(json.error || 'AI request failed. Please retry.');
+        return;
+      }
+
+      setAiResult(json.data);
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : 'Network error while contacting AI endpoint.');
+    } finally {
+      setIsRunning(false);
+    }
+  }, [promptText]);
+
   const modal = open ? (
     <div
       className="fixed inset-0 z-[5000] flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -84,11 +137,11 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
         >
           <div>
             <h2 id={`${textareaId}-title`} className="font-mono text-sm font-bold uppercase tracking-wider" style={{ color: '#c4b5fd' }}>
-              Route analysis prompt
+              Route AI analysis
             </h2>
             <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              Copy the block below, open any linked chat in a new tab, and paste. This app does not call AI APIs or
-              send your data to models — you stay in control. Providers change their free tiers often.
+              Tap Start AI to send this run prompt to multiple no-key model APIs, then receive one concise merged answer.
+              You can still copy the prompt or open chat sites manually if needed.
             </p>
           </div>
           <button
@@ -103,6 +156,44 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="rounded-xl border p-3" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-default)' }}>
+            <p className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: 'var(--text-secondary)' }}>
+              AI consensus
+            </p>
+            {aiResult ? (
+              <>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                  {aiResult.answer}
+                </p>
+                <div className="mt-3 space-y-1">
+                  {aiResult.modelAnswers.map((item) => (
+                    <p key={`${item.model}-${item.label}`} className="text-[10px] font-mono" style={{ color: item.ok ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                      {item.ok ? '✓' : '✕'} {item.label} ({item.latencyMs}ms){item.ok ? '' : ` - ${item.error || 'failed'}`}
+                    </p>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                No response yet. Press Start AI to generate a short consensus answer.
+              </p>
+            )}
+            {runError ? (
+              <p className="text-xs mt-2" style={{ color: 'var(--accent-red)' }}>
+                {runError}
+              </p>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void runAi()}
+            className="btn-primary w-full py-2.5 text-sm"
+            disabled={isRunning}
+          >
+            {isRunning ? 'Running multi-model AI...' : 'Start AI (auto multi-model)'}
+          </button>
+
           <textarea
             id={textareaId}
             readOnly
@@ -173,7 +264,7 @@ export function RunAiAnalysisPanel({ run, compact }: Props) {
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {compact ? '🤖 Insight' : '🤖 Route insight (free AI, no API key)'}
+        {compact ? '🤖 AI' : '🤖 Route AI (auto, no API key)'}
       </button>
       {mounted ? createPortal(modal, document.body) : null}
     </>
