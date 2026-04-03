@@ -24,7 +24,7 @@ async function getRedis(): Promise<RedisClient> {
   }
 
   const client = createClient({ url });
-  client.on('error', (error) => {
+  client.on('error', (error: unknown) => {
     console.error('[Redis] client error:', error);
   });
 
