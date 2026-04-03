@@ -1,5 +1,5 @@
 import type { RunRecord, Stop } from '@/types';
-import { generateSignature } from '@/lib/signing';
+import { getSignedHeaders } from '@/lib/client-signing';
 
 const SNAPSHOT_PREFIX = 'ot-run-snapshot:';
 const SYNC_QUEUE_KEY = 'ot-stop-sync-queue';
@@ -91,7 +91,6 @@ export function applyStopStatusLocally(
 export async function flushStopPatchQueue(): Promise<void> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
-  const secret = process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
   const queue = readStopPatchQueue();
   if (queue.length === 0) return;
 
@@ -100,14 +99,12 @@ export async function flushStopPatchQueue(): Promise<void> {
   for (const item of queue) {
     try {
       const body = JSON.stringify({ status: item.status });
-      const timestamp = String(Math.floor(Date.now() / 1000));
-      const sig = await generateSignature(body, secret);
+      const signedHeaders = await getSignedHeaders(body);
       const res = await fetch(`/api/v1/runs/${item.runId}/stops/${item.stopId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-timestamp': timestamp,
-          'x-signature': sig,
+          ...signedHeaders,
         },
         body,
       });

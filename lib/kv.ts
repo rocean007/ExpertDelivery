@@ -1,13 +1,15 @@
-import { createClient, type RedisClientType } from 'redis';
+import { createClient } from 'redis';
 import type { RunRecord, Stop } from '@/types';
 
 const RUN_TTL_SECONDS = 86400; // 24 hours
 const ARCHIVE_TTL_SECONDS = 172800; // 48 hours
 
-let redisClient: RedisClientType | null = null;
-let redisConnectPromise: Promise<RedisClientType> | null = null;
+type RedisClient = ReturnType<typeof createClient>;
 
-async function getRedis(): Promise<RedisClientType> {
+let redisClient: RedisClient | null = null;
+let redisConnectPromise: Promise<RedisClient> | null = null;
+
+async function getRedis(): Promise<RedisClient> {
   if (redisClient?.isOpen) {
     return redisClient;
   }
