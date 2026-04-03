@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { RunAiAnalysisPanel } from '@/components/RunAiAnalysisPanel';
+import { getSignedHeaders } from '@/lib/client-signing';
 import type { RunRecord, LatLng, GeocodeResult, GeocodeLookupResult } from '@/types';
 
 const PlannerMap = dynamic(() => import('@/components/PlannerMap'), {
@@ -193,15 +194,13 @@ export default function PlannerPage() {
       };
 
       const body = JSON.stringify(payload);
-      const timestamp = String(Math.floor(Date.now() / 1000));
+      const signedHeaders = await getSignedHeaders(body);
 
-      // For demo/planner, we skip HMAC and use direct call
       const res = await fetch('/api/v1/runs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-timestamp': timestamp,
-          'x-signature': await computeHmac(body),
+          ...signedHeaders,
         },
         body,
       });
@@ -536,12 +535,4 @@ export default function PlannerPage() {
       </main>
     </div>
   );
-}
-
-async function computeHmac(body: string): Promise<string> {
-  const secret = process.env.NEXT_PUBLIC_HMAC_SECRET || 'dev-secret';
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
