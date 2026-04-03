@@ -66,8 +66,8 @@ export default function PlannerPage() {
   const [run, setRun] = useState<RunRecord | null>(null);
   const [error, setError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const depotBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stopBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const depotBlurTimerRef = useRef<number | null>(null);
+  const stopBlurTimerRef = useRef<number | null>(null);
 
   const geocodeDebounced = useRef(
     debounce(async (query: string, onResult: (suggestions: GeocodeResult[], bestMatch: LatLng | null) => void, onLoading: (v: boolean) => void) => {
@@ -269,8 +269,6 @@ export default function PlannerPage() {
                   }}
                   autoComplete="street-address"
                   aria-label="Depot address"
-                  aria-expanded={depotHasFocus && depotSuggestions.length > 0}
-                  aria-controls="depot-suggestions"
                 />
                 {depotGeocoding && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1 pointer-events-none">
@@ -285,7 +283,6 @@ export default function PlannerPage() {
                 {depotHasFocus && depotSuggestions.length > 0 && (
                   <div
                     id="depot-suggestions"
-                    role="listbox"
                     className="absolute left-0 right-0 top-full mt-1 z-[100] max-h-48 overflow-y-auto rounded-md shadow-lg"
                     style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}
                   >
@@ -293,7 +290,6 @@ export default function PlannerPage() {
                       <button
                         key={`${suggestion.lat}-${suggestion.lng}-${idx}`}
                         type="button"
-                        role="option"
                         onPointerDown={(e) => {
                           e.preventDefault();
                           selectDepotSuggestion(suggestion);
